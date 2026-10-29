@@ -1,0 +1,42 @@
+name: Publish
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable release tag to verify or repair
+        required: true
+        type: string
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: npm-publish-lcu-auto
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.3
+      - run: npm install --global npm@11.19.0 --registry=https://registry.npmjs.org/
+      - run: bun install --frozen-lockfile --registry=https://registry.npmjs.org/
+      - name: Verify immutable tag and source
+        run: bun scripts/release.ts verify "$RELEASE_TAG"
+      - run: bun run check
+      - run: bun run pack:check
+      - name: Publish exact verified artifact and read back registry
+        run: bun scripts/release.ts publish "$RELEASE_TAG"

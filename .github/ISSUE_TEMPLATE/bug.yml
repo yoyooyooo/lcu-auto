@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible CLI or MCP problem without private data.
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include tokens, real desktop screenshots, private endpoints or chat content. Report security issues through Security > Advisories."
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and platform
+      description: lcu-auto, Node, LCU and MCP client versions; OS and architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Synthetic reproduction
+      description: Exact steps, expected result and observed result using a harmless fixture.
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Diagnostics
+      description: Sanitized error category and checks already performed. Do not paste full logs.

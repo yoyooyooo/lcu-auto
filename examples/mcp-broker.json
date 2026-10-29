@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lcu-auto": {
+      "command": "lcu-auto",
+      "args": ["mcp", "--url", "http://127.0.0.1:8789/mcp"]
+    }
+  }
+}

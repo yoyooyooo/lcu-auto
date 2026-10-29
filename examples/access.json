@@ -1,0 +1,5 @@
+{
+  "issuer": "https://team.cloudflareaccess.com",
+  "audience": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "publicOrigin": "https://desktop.example.com"
+}

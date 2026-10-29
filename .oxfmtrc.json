@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": [".runs/**", ".artifacts/**", "dist/**", "node_modules/**", "bun.lock"]
+}
