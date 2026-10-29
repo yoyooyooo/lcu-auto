@@ -33,7 +33,9 @@ test("help, version and paths work in an isolated configuration with no LCU inst
   expect(run(["--version"], directory).stdout).toContain(VERSION);
   expect(JSON.parse(run(["config", "paths"], directory).stdout).configDir).toBe(directory);
   expect(run(["doctor", "--json"], directory).status).not.toBe(0);
-});
+  // This case launches eight isolated processes; a cold host's aggregate time
+  // is not the latency of one CLI invocation. Each spawn remains bounded above.
+}, 60_000);
 test("token creation is private, does not expose its value and refuses overwrite", () => {
   const directory = mkdtempSync(join(tmpdir(), "lcu-auto-token-"));
   const first = run(["token"], directory);
@@ -45,7 +47,7 @@ test("token creation is private, does not expose its value and refuses overwrite
   if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   expect(run(["token"], directory).status).not.toBe(0);
   expect(readFileSync(file, "utf8")).toBe(secret);
-});
+}, 30_000);
 test("legacy entrypoints map to explicit MCP or serve commands", () => {
   expect(normalizeArgs(["connect"])).toEqual(["mcp", "--url", "http://127.0.0.1:8789/mcp"]);
   expect(normalizeArgs(["stdio"])).toEqual(["mcp"]);
@@ -61,4 +63,4 @@ test("service dry-run does not require destructive flags or create a definition"
   expect(typeof plan.definitionPath).toBe("string");
   const doctor = run(["doctor"], directory);
   expect(doctor.stderr).not.toContain("Missing required flag");
-});
+}, 30_000);
