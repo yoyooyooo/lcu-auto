@@ -186,7 +186,7 @@ test("HTTP sessions isolate REPL state, filter metadata and cleanly DELETE", asy
   }
 }, 30_000);
 
-test("cleanup failure disables the session instead of retrying a possible side effect", async () => {
+test("explicit reset replaces a cleanup-failed runtime without retrying its side effect", async () => {
   const f = await fixtureHttp();
   try {
     const peer = await f.connect();
@@ -194,13 +194,20 @@ test("cleanup failure disables the session instead of retrying a possible side e
     const reset = CallToolResultSchema.parse(
       await peer.client.callTool({ name: "js_reset", arguments: {} }),
     );
-    expect(reset.isError).toBe(true);
-    expect(firstText(await invoke(peer.client, "set"))).toContain("cleanup failed");
+    expect(reset.isError).not.toBe(true);
+    expect(
+      reset.content.some(
+        (block) => block.type === "text" && block.text.includes("outcome may be uncertain"),
+      ),
+    ).toBe(true);
+    expect(JSON.parse(firstText(await invoke(peer.client, "get"))).memory).toBe(0);
     const events = (await readFile(f.trace, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    expect(events.filter((event) => event.event === "call").length).toBe(1);
+    expect(
+      events.filter((event) => event.event === "call" && event.code === "fail-cleanup"),
+    ).toHaveLength(1);
   } finally {
     await f.close();
   }

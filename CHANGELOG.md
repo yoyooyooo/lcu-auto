@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Explicit `js_reset` replaces the owned LCU runtime process, including a broken runtime retained across HTTP reconnects. It also refreshes the runtime after a desktop-app reinstall.
+- Reset waits for confirmed teardown before replacement, never replays an uncertain action, and keeps failed teardown fail-closed. A failed replacement can be retried by another explicit reset.
+- Document the distinction between transport reconnection, runtime reset and operating-system permission grants.
+
 ## 0.4.0
 
 First public CLI release, replacing a machine-specific prototype.

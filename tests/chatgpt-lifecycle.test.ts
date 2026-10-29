@@ -172,6 +172,50 @@ test("metadata-only correlation survives unrelated transport closure", async () 
   }
 }, 30_000);
 
+test("same-conversation reconnect stays closed until explicit reset replaces a dead upstream", async () => {
+  const f = await setup({ limit: 1 });
+  try {
+    const first = await f.connect("reinstalled-runtime");
+    try {
+      await run(first.client, "set");
+      const interrupted = CallToolResultSchema.parse(
+        await first.client.callTool({ name: "js", arguments: { code: "disconnect" } }),
+      );
+      expect(interrupted.isError).toBe(true);
+    } finally {
+      await first.close();
+    }
+    const second = await f.connect("reinstalled-runtime");
+    try {
+      await expect(run(second.client, "get")).rejects.toThrow("js_reset");
+      expect(f.created).toBe(2);
+      const reset = CallToolResultSchema.parse(
+        await second.client.callTool({ name: "js_reset", arguments: {} }),
+      );
+      expect(reset.isError).not.toBe(true);
+      expect(f.created).toBe(3);
+      expect((await run(second.client, "get")).memory).toBe(0);
+      await run(second.client, "observe");
+      expect((await run(second.client, "action")).actionExecuted).toBe(true);
+      expect(f.http.contextCount).toBe(1);
+    } finally {
+      await second.close();
+    }
+    const events = (await readFile(f.trace, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(events.filter((event) => event.event === "call" && event.code === "set")).toHaveLength(
+      1,
+    );
+    expect(
+      events.filter((event) => event.event === "call" && event.code === "disconnect"),
+    ).toHaveLength(1);
+  } finally {
+    await f.http.close();
+  }
+}, 30_000);
+
 test("different conversations and authenticated owners never share execution state", async () => {
   const f = await setup();
   try {

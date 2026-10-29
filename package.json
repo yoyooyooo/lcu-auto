@@ -1,6 +1,6 @@
 {
   "name": "lcu-auto",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": false,
   "description": "Local and remote MCP access to LCU with persistent computer-use sessions and locally managed app consent.",
   "keywords": [

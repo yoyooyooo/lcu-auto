@@ -22,7 +22,9 @@ Ordinary stateful MCP clients receive transport IDs, each bound to an authentica
 
 ## Control-turn lifetime
 
-Successful calls retain the live control turn. Ending it after every observation would make a later input call inactive even if its JavaScript variable still exists. Returned tool errors leave state available for inspection; cancellation or transport failure ends the control turn. Reset first finishes the live turn, then resets the worker. Cleanup failure disables that execution session rather than retrying a possibly executed action.
+Successful calls retain the live control turn. Ending it after every observation would make a later input call inactive even if its JavaScript variable still exists. Returned tool errors leave state available for inspection; cancellation or transport failure ends the control turn. Cleanup failure disables further actions rather than retrying a possibly executed action.
+
+An explicit `js_reset` is still accepted for a broken execution context. Under the same desktop queue, it attempts turn finalization, waits for confirmed closure of the owned upstream process, and creates a fresh runtime and session identity. This refreshes runtime state after an application reinstall as well as clearing REPL bindings. A failed turn notification does not block replacement when process closure succeeds; a failed process closure does. The closure promise, including rejection, is retained so a second idempotent close cannot disguise failed teardown. No previous action is replayed, and the next input requires a fresh observation. Shutdown and cancellation fence replacement, and a failed new connection is itself retired before a later explicit reset can retry.
 
 Finalizers participate in the same desktop queue and cannot be rejected by ordinary admission limits. Shutdown stops new work, interrupts pending operations and closes owned resources. A successful request does not imply exactly-once execution after network failure.
 

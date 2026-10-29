@@ -75,6 +75,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     failCleanup = true;
     return text({ sideEffect: true });
   }
+  // Model an upstream process disappearing during an application reinstall.
+  if (code === "disconnect") process.exit(0);
   if (code === "error")
     return { isError: true, content: [{ type: "text", text: "original tool error" }] };
   if (code === "image")

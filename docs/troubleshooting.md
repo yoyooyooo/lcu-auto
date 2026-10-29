@@ -18,6 +18,16 @@ Discovery and HTTP transports have different limits from execution contexts. Rep
 
 Idle contexts are reclaimed after ten minutes. Local stdio bridges keep their broker connection alive. Stop unused clients or reset the task; raising limits without understanding ownership can hide a leak.
 
+## Session is closed, even after reconnecting or reinstalling the desktop app
+
+An HTTP reconnect preserves the logical conversation; it does not restart the broker or repair a broken execution context. Reinstalling ChatGPT.app also does not restart an already-running LCU server. A health response of `ok: true` only confirms that the broker is reachable, not that its desktop worker or system permissions are ready.
+
+On 0.4.1 or later, explicitly call the MCP `js_reset` tool. It closes and replaces that context's owned LCU runtime without replaying any previous action. JavaScript bindings are discarded; select and observe the target again before input. If old-process teardown cannot be confirmed, reset remains fail-closed and reports the error rather than overlapping runtimes.
+
+For a pre-0.4.1 broker, rebuild/update first and restart the user service. `lcu-auto service restart --force-disconnect` disconnects all contexts on that broker; use it only when accepting that interruption. There is no need to recreate OAuth credentials just to repair an execution context.
+
+Reset and restart do not grant Accessibility or Screen Recording permissions. When intentionally reauthorizing a reinstalled app, make one harmless observation request, finish the native permission flow locally, then explicitly reset and observe again if the earlier call timed out. Do not keep replaying UI actions while permission readiness is unknown.
+
 ## Token file rejected
 
 Use `lcu-auto token` to create a new file; it refuses overwrite. Unix files must be owned by your user and not accessible to group/others. Symlinks are rejected. On Windows, restrict the file's ACL to your account. Do not print the token to diagnose it.

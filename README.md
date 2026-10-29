@@ -103,6 +103,8 @@ Consecutive calls retain one computer-use control turn. Successful tool returns 
 
 Discovery does not reserve an execution runtime. Idle runtimes are bounded and reclaimed; running actions are not evicted. Cancellation, reset and shutdown clean up before another queued operation starts. A timeout or lost response can conceal an action that already happened, so observe the desktop before retrying.
 
+If a context becomes closed or broken, explicitly call `js_reset`: it replaces the owned LCU process without replaying previous actions, even when an HTTP reconnect still points to the failed context. This also refreshes runtime state after reinstalling the desktop app. It does not grant OS permissions. See [recovery](docs/troubleshooting.md#session-is-closed-even-after-reconnecting-or-reinstalling-the-desktop-app).
+
 The queue serializes individual calls, not an entire multi-step task. Avoid two agents editing the same window. Screenshots and accessibility text can contain private information and are returned to your MCP client. The package does not send telemetry or retain tool results in its production logs. LCU and your client have their own behavior and terms.
 
 The default `--scope always` can persist app grants in upstream LCU. `--scope session` or `--scope once` reduces the maximum requested persistence but does not revoke old grants. Browser-extension access is opt-in and requires exact site origins. See the [security model](docs/security-model.md).

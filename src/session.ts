@@ -49,7 +49,7 @@ export async function createExecution(
   queue: DesktopQueue,
   audit: Audit = stderrAudit,
 ) {
-  const upstream = factory();
+  let upstream = factory();
   try {
     await upstream.connect();
   } catch (error) {
@@ -63,7 +63,14 @@ export async function createExecution(
     await upstream.close();
     throw error;
   }
-  const sessionId = randomUUID();
+  let sessionId = randomUUID();
+  let upstreamClose: Promise<void> | undefined;
+  const closeUpstream = () => {
+    const owned = upstream;
+    // Retain rejected teardown too: a later reset must not mistake an idempotent
+    // second close for confirmation that a failed first teardown succeeded.
+    return (upstreamClose ??= Promise.resolve().then(() => owned.close()));
+  };
   const stop = new AbortController();
   const running = new Set<Promise<CallToolResult>>();
   let state: "open" | "broken" | "closing" | "closed" = "open";
@@ -85,10 +92,70 @@ export async function createExecution(
     } catch {
       state = "broken";
       audit("cleanup_failed");
-      await upstream.close().catch(() => {});
+      await closeUpstream().catch(() => audit("upstream_close_failed"));
       throw new Error(
-        "LCU cleanup failed. This session is disabled and its upstream connection was closed. The operation may have executed; inspect the desktop before reconnecting.",
+        "LCU cleanup failed. Further actions are disabled. Call js_reset to replace the runtime; reconnecting alone retains this logical context. The operation may have executed, so observe the target before another action.",
       );
+    }
+  }
+
+  async function resetRuntime(
+    args: Record<string, unknown>,
+    context: { requestId: string | number; signal: AbortSignal },
+    signal: AbortSignal,
+  ): Promise<CallToolResult> {
+    const recovering = state === "broken";
+    let cleanupFailed = false;
+    try {
+      await endControlTurn("Interrupt");
+    } catch {
+      // The notification may fail when the runtime was killed or replaced.
+      // Replacement is permitted only after owned-process teardown succeeds.
+      cleanupFailed = true;
+    }
+    state = "broken";
+    await closeUpstream();
+    signal.throwIfAborted();
+    upstream = factory();
+    upstreamClose = undefined;
+    sessionId = randomUUID();
+    try {
+      await upstream.connect();
+      publicSurface(upstream);
+      signal.throwIfAborted();
+      const result = toolResult(
+        await upstream.call("js_reset", args, {
+          sessionId,
+          turnId: randomUUID(),
+          toolCallId: String(context.requestId),
+          signal,
+        }),
+      );
+      signal.throwIfAborted();
+      if (result.isError) {
+        await closeUpstream();
+        return result;
+      }
+      state = "open";
+      audit("runtime_replaced", { recovering, cleanup_failed: cleanupFailed });
+      return {
+        ...result,
+        content: [
+          ...result.content,
+          {
+            type: "text",
+            text:
+              "The owned LCU runtime was restarted and all JavaScript bindings were discarded. No previous action was replayed. Select and observe the target again before input." +
+              (cleanupFailed || recovering
+                ? " The earlier action's outcome may be uncertain; resetting does not undo its effects."
+                : ""),
+          },
+        ],
+      };
+    } catch (error) {
+      await closeUpstream().catch(() => audit("upstream_close_failed"));
+      audit("runtime_reset_failed");
+      throw error;
     }
   }
 
@@ -97,22 +164,22 @@ export async function createExecution(
     args: Record<string, unknown>,
     context: { requestId: string | number; signal: AbortSignal },
   ): Promise<CallToolResult> {
-    if (state !== "open")
+    if (state !== "open" && !(state === "broken" && name === "js_reset"))
       return errorResult(
-        "This LCU session is closed or its cleanup failed. Reconnect before another action.",
+        "This LCU session is closed or its cleanup failed. Call js_reset to replace its runtime; reconnecting alone does not clear the logical context. Do not replay a possible desktop action.",
       );
     if (name !== "js" && name !== "js_reset")
       return errorResult("Host-only tools are not exposed.");
     const signal = AbortSignal.any([context.signal, stop.signal]);
     const work = queue
       .run(signal, async () => {
-        if (state !== "open")
+        if (state !== "open" && !(state === "broken" && name === "js_reset"))
           return errorResult("Session closed before execution; no action was started.");
-        // End the live worker's turn before reset. Do not rely on the upstream reset
-        // helper, which may swallow cleanup failures before destroying the worker.
-        if (name === "js_reset") await endControlTurn("Interrupt");
         signal.throwIfAborted();
-        const turnId = name === "js" ? (controlTurn ??= { id: randomUUID() }).id : randomUUID();
+        // Explicit reset owns process replacement for stdio and HTTP alike. It
+        // works even when reconnecting has retained a poisoned conversation.
+        if (name === "js_reset") return resetRuntime(args, context, signal);
+        const turnId = (controlTurn ??= { id: randomUUID() }).id;
         const started = Date.now();
         let result: CallToolResult;
         let interrupted = false;
@@ -182,7 +249,7 @@ export async function createExecution(
             try {
               await endControlTurn(hadInFlightCalls ? "Interrupt" : "Stop");
             } finally {
-              await upstream.close();
+              await closeUpstream();
             }
           });
         } finally {
@@ -206,7 +273,7 @@ export function createMcpServer(surface: Surface, call: ToolCall, audit: Audit =
       capabilities: { tools: {} },
       instructions:
         surface.instructions +
-        "\nLCU Auto: native-app consent is handled locally. Consecutive js calls share a persistent REPL and Computer Use turn in their logical context. ChatGPT contexts are scoped by the authenticated principal and openai/session, not by an HTTP connection. Successful calls and HTTP reconnects do not end the turn. Cancellation and js_reset end it; observe the target again before input. Contexts expire after inactivity and are lost on service restart. If an error mentions get_app_state, use app.getAXState() or cua.getApp(...) inside js. There is no separate get_app_state MCP tool.",
+        "\nLCU Auto: native-app consent is handled locally. Consecutive js calls share a persistent REPL and Computer Use turn in their logical context. ChatGPT contexts are scoped by the authenticated principal and openai/session, not by an HTTP connection. Successful calls and HTTP reconnects do not end the turn. Cancellation ends the control turn. js_reset explicitly closes and replaces the owned LCU runtime, including a broken runtime, without replaying previous actions; all bindings are lost and the target must be observed again before input. Reconnecting alone does not repair a broken logical context. OS permission grants remain local and cannot be repaired by MCP reset. Contexts expire after inactivity and are lost on service restart. If an error mentions get_app_state, use app.getAXState() or cua.getApp(...) inside js. There is no separate get_app_state MCP tool.",
     },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: surface.tools }));
