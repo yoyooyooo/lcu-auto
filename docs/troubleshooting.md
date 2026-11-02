@@ -16,7 +16,7 @@ A normal successful call should not invalidate the next call's app binding. If i
 
 Discovery and HTTP transports have different limits from execution contexts. Repeated ChatGPT connections in one conversation should share one context. If a client sends inconsistent conversation IDs, the broker rejects the mismatch instead of mixing state.
 
-Idle contexts are reclaimed after ten minutes. Local stdio bridges keep their broker connection alive. Stop unused clients or reset the task; raising limits without understanding ownership can hide a leak.
+Idle contexts are reclaimed after ten minutes. Local stdio bridges keep their broker connection alive. When the execution-context limit is reached, the HTTP broker first retires the oldest idle, previously used _transport-owned_ context for the same authenticated owner, together with its MCP transport. In-flight requests and contexts associated with an explicit conversation identifier are never evicted for capacity. A retired transport may return an expired-session error if reused; reconnect and observe the desktop before another action, since its JavaScript bindings are gone. If all slots belong to active calls or protected conversations, capacity is still rejected. Raising limits without understanding ownership can hide a leak.
 
 ## Session is closed, even after reconnecting or reinstalling the desktop app
 

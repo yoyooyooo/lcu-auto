@@ -259,6 +259,69 @@ test("context capacity rejects new work but preserves existing conversation and 
   }
 }, 30_000);
 
+test("task-like fresh transports reclaim idle transport contexts without evicting a conversation", async () => {
+  const f = await setup({ limit: 2 });
+  const persistent = await f.connect("persistent-conversation");
+  const transient: Awaited<ReturnType<typeof f.connect>>[] = [];
+  try {
+    await run(persistent.client, "set", "persistent-conversation");
+    for (let i = 0; i < 20; i++) {
+      // ChatGPT Tasks can issue a new stateful transport for every tool call,
+      // without a correlation ID or an explicit MCP DELETE for the previous one.
+      const peer = await f.connect();
+      transient.push(peer);
+      expect((await run(peer.client, "get")).memory).toBe(0);
+      expect(f.http.contextCount).toBeLessThanOrEqual(2);
+    }
+    expect((await run(persistent.client, "get", "persistent-conversation")).memory).toBe(42);
+    await expect(run(transient[0]!.client, "get")).rejects.toThrow();
+    expect(f.http.contextCount).toBe(2);
+  } finally {
+    await Promise.allSettled(transient.map((peer) => peer.close()));
+    await persistent.close();
+    await f.http.close();
+  }
+}, 30_000);
+
+test("capacity reclaim cannot evict an idle transport belonging to another owner", async () => {
+  const f = await setup({ limit: 1 });
+  const ownerA = await f.connect(undefined, "owner-a");
+  const ownerB = await f.connect(undefined, "owner-b");
+  try {
+    await run(ownerA.client, "set");
+    await expect(run(ownerB.client, "get")).rejects.toThrow("capacity reached");
+    expect((await run(ownerA.client, "get")).memory).toBe(42);
+    expect(f.http.contextCount).toBe(1);
+  } finally {
+    await ownerA.close();
+    await ownerB.close();
+    await f.http.close();
+  }
+}, 30_000);
+
+test("capacity reclaim never interrupts an in-flight transport action", async () => {
+  const f = await setup({ limit: 1 });
+  const busy = await f.connect();
+  const abort = new AbortController();
+  let fresh: Awaited<ReturnType<typeof f.connect>> | undefined;
+  try {
+    const pending = busy.client.callTool({ name: "js", arguments: { code: "slow" } }, undefined, {
+      signal: abort.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fresh = await f.connect();
+    await expect(run(fresh.client, "get")).rejects.toThrow("capacity reached");
+    expect(f.http.contextCount).toBe(1);
+    abort.abort();
+    await expect(pending).rejects.toThrow();
+  } finally {
+    abort.abort();
+    await fresh?.close();
+    await busy.close();
+    await f.http.close();
+  }
+}, 30_000);
+
 test("conversation contexts expire after inactivity, not after one HTTP client closes", async () => {
   const f = await setup({ idleMs: 150 });
   try {

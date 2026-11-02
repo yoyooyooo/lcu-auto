@@ -248,7 +248,7 @@ test("cancellation reaches upstream and Interrupt cleanup precedes the next oper
   }
 }, 30_000);
 
-test("idle HTTP sessions expire and concurrent session count is bounded", async () => {
+test("idle HTTP sessions expire and capacity retires idle transport sessions", async () => {
   const f = await fixtureHttp({ idleMs: 150, maxSessions: 1 });
   try {
     const a = await f.connect();
@@ -256,8 +256,10 @@ test("idle HTTP sessions expire and concurrent session count is bounded", async 
     expect(f.http.contextCount).toBe(0);
     await invoke(a.client, "set");
     expect(f.http.contextCount).toBe(1);
-    await expect(invoke(b.client, "set")).rejects.toThrow();
-    expect(JSON.parse(firstText(await invoke(a.client, "get"))).memory).toBe(42);
+    await invoke(b.client, "set");
+    expect(f.http.contextCount).toBe(1);
+    await expect(invoke(a.client, "get")).rejects.toThrow();
+    expect(JSON.parse(firstText(await invoke(b.client, "get"))).memory).toBe(42);
     await new Promise((resolve) => setTimeout(resolve, 350));
     expect(f.http.sessionCount).toBe(0);
     const fresh = await f.connect();

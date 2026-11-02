@@ -20,6 +20,9 @@ For clients that send `X-OpenAI-Session` or `openai/session`, state is keyed by 
 
 Ordinary stateful MCP clients receive transport IDs, each bound to an authenticated principal and a connection-owned execution context. Local bridges keep these alive with a periodic ping. Contexts and lightweight transports have separate limits and expiry. In-flight work is not evicted to admit another context.
 
+Under execution-context capacity pressure, the HTTP broker may close the least recently used idle transport-owned execution and its transport for that same authenticated principal. It does not infer a ChatGPT task identity, evict a correlated conversation context, interrupt an in-flight operation or replay an action. A client whose transport was retired must reconnect and observe the target before continuing; the old JavaScript REPL is not preserved. Normal idle expiration remains the default cleanup path when capacity is available.
+If upstream teardown fails, its execution slot remains reserved rather than allowing overlapping runtimes with unconfirmed cleanup.
+
 ## Control-turn lifetime
 
 Successful calls retain the live control turn. Ending it after every observation would make a later input call inactive even if its JavaScript variable still exists. Returned tool errors leave state available for inspection; cancellation or transport failure ends the control turn. Cleanup failure disables further actions rather than retrying a possibly executed action.

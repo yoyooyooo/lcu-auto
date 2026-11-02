@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createExecution, DesktopQueue } from "../src/session.ts";
+import { ExecutionContexts } from "../src/contexts.ts";
 import type { Upstream } from "../src/lcu.ts";
 
 function fixture(options: { rejectClose?: boolean; rejectConnectAt?: number } = {}) {
@@ -153,4 +154,26 @@ test("cancelled reset and reset after shutdown never create a replacement", asyn
   await execution.close();
   expect((await execution.call("js_reset", {}, context())).isError).toBe(true);
   expect(f.generations).toBe(1);
+});
+
+test("failed idle teardown cannot release capacity for another runtime", async () => {
+  const f = fixture({ rejectClose: true });
+  let contexts: ExecutionContexts;
+  contexts = new ExecutionContexts(
+    f.factory,
+    new DesktopQueue(),
+    () => {},
+    1,
+    600_000,
+    () => contexts.close("first").catch(() => {}),
+  );
+  expect(
+    (await contexts.call("first", "owner", "js", { code: "increment" }, context())).isError,
+  ).not.toBe(true);
+  await expect(contexts.call("second", "owner", "js", {}, context())).rejects.toThrow(
+    "capacity reached",
+  );
+  expect(contexts.size).toBe(1);
+  expect(f.generations).toBe(1);
+  await contexts.shutdown().catch(() => {});
 });

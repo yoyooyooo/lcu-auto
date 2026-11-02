@@ -44,7 +44,14 @@ export async function startHttp(
   const queue = new DesktopQueue();
   const idleMs = options.idleMs ?? 600_000;
   const discoveryIdleMs = options.discoveryIdleMs ?? Math.min(idleMs, 60_000);
-  const contexts = new ExecutionContexts(factory, queue, audit, options.maxSessions ?? 8, idleMs);
+  const contexts = new ExecutionContexts(
+    factory,
+    queue,
+    audit,
+    options.maxSessions ?? 8,
+    idleMs,
+    reclaimIdleTransport,
+  );
   const sessions = new Map<string, TransportEntry>();
   const initializing = new Set<Promise<void>>();
   const stateless = new Map<string, AbortController>();
@@ -80,9 +87,28 @@ export async function startHttp(
       await entry.server.close();
     }
   }
-  function invoke(key: string, signal?: AbortSignal): ToolCall {
+  async function reclaimIdleTransport(principal: string) {
+    // A fresh transport without a conversation identifier must not starve all
+    // later callers for the full idle TTL. At capacity, retire the oldest
+    // transport-owned execution only after its last request has completed.
+    // Explicitly correlated conversation contexts are never candidates.
+    const oldest = [...sessions]
+      .filter(
+        ([, entry]) =>
+          entry.principal === principal &&
+          entry.used &&
+          entry.active === 0 &&
+          contexts.isIdle(entry.key),
+      )
+      .sort(([, a], [, b]) => a.touched - b.touched)[0];
+    if (!oldest) return;
+    const [id, entry] = oldest;
+    await drop(id);
+    audit("idle_transport_reclaimed_at_capacity", { context: entry.key.slice(0, 12) });
+  }
+  function invoke(key: string, principal: string, signal?: AbortSignal): ToolCall {
     return (name, args, extra) =>
-      contexts.call(key, name, args, {
+      contexts.call(key, principal, name, args, {
         requestId: extra.requestId,
         signal: AbortSignal.any([extra.signal, shutdown.signal, ...(signal ? [signal] : [])]),
       });
@@ -124,7 +150,7 @@ export async function startHttp(
     try {
       server = createMcpServer(
         await surface(),
-        invoke(key, AbortSignal.any([request.signal, controller.signal])),
+        invoke(key, principal, AbortSignal.any([request.signal, controller.signal])),
         audit,
       );
       const transport = new WebStandardStreamableHTTPServerTransport({
@@ -262,7 +288,7 @@ export async function startHttp(
     try {
       const info = await surface();
       if (closing) return json(503, "Server is shutting down.");
-      const protocol = createMcpServer(info, invoke(key), audit);
+      const protocol = createMcpServer(info, invoke(key, principal), audit);
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => newId,
         onsessionclosed: () => drop(newId),

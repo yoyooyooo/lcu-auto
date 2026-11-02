@@ -59,6 +59,7 @@ export class ExecutionContexts {
     private readonly audit: Audit,
     private readonly limit: number,
     private readonly idleMs: number,
+    private readonly reclaimAtCapacity?: (principal: string) => Promise<void>,
   ) {}
 
   get size() {
@@ -67,15 +68,33 @@ export class ExecutionContexts {
   get activeCalls() {
     return [...this.entries.values()].reduce((sum, entry) => sum + entry.calls, 0);
   }
+  isIdle(key: string) {
+    const entry = this.entries.get(key);
+    return entry !== undefined && entry.calls === 0 && !entry.closing;
+  }
   touch(key: string) {
     const entry = this.entries.get(key);
     if (entry) entry.touched = Date.now();
   }
-  readonly call = async (key: string, ...args: Parameters<ToolCall>): ReturnType<ToolCall> => {
+  readonly call = async (
+    key: string,
+    principal: string,
+    ...args: Parameters<ToolCall>
+  ): ReturnType<ToolCall> => {
     if (this.stopped) throw new Error("Server is shutting down.");
     let entry = this.entries.get(key);
     if (entry?.closing)
       throw new Error("This context is closing. Observe the target after reconnecting.");
+    if (!entry) {
+      // Only the HTTP broker can safely retire an idle transport together with
+      // its MCP session. Recheck after asynchronous teardown before reserving.
+      if (this.entries.size >= this.limit) {
+        await this.reclaimAtCapacity?.(principal);
+        entry = this.entries.get(key);
+        if (entry?.closing)
+          throw new Error("This context is closing. Observe the target after reconnecting.");
+      }
+    }
     if (!entry) {
       if (this.entries.size >= this.limit) throw new ContextCapacityError();
       // Reserve synchronously before connecting so concurrent requests cannot exceed the limit.
@@ -115,21 +134,23 @@ export class ExecutionContexts {
     entry.closing = (async () => {
       try {
         await (await entry.execution).close();
-      } catch {
+      } catch (error) {
         this.audit("execution_context_close_failed", { context: key.slice(0, 12) });
-      } finally {
-        if (this.entries.get(key) === entry) this.entries.delete(key);
-        this.audit("execution_context_closed", {
-          context: key.slice(0, 12),
-          contexts: this.entries.size,
-        });
+        // An unconfirmed teardown must not free a slot for another runtime.
+        // Keep this context quarantined until the broker can be restarted.
+        throw error;
       }
+      if (this.entries.get(key) === entry) this.entries.delete(key);
+      this.audit("execution_context_closed", {
+        context: key.slice(0, 12),
+        contexts: this.entries.size,
+      });
     })();
     return entry.closing;
   }
   async sweep() {
     const now = Date.now();
-    await Promise.all(
+    await Promise.allSettled(
       [...this.entries]
         .filter(([, entry]) => !entry.calls && now - entry.touched > this.idleMs)
         .map(([key]) => this.close(key)),
