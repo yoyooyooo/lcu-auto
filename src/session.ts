@@ -273,7 +273,23 @@ export function createMcpServer(surface: Surface, call: ToolCall, audit: Audit =
       capabilities: { tools: {} },
       instructions:
         surface.instructions +
-        "\nLCU Auto: native-app consent is handled locally. Consecutive js calls share a persistent REPL and Computer Use turn in their logical context. ChatGPT contexts are scoped by the authenticated principal and openai/session, not by an HTTP connection. Successful calls and HTTP reconnects do not end the turn. Cancellation ends the control turn. js_reset explicitly closes and replaces the owned LCU runtime, including a broken runtime, without replaying previous actions; all bindings are lost and the target must be observed again before input. Reconnecting alone does not repair a broken logical context. OS permission grants remain local and cannot be repaired by MCP reset. Contexts expire after inactivity and are lost on service restart. If an error mentions get_app_state, use app.getAXState() or cua.getApp(...) inside js. There is no separate get_app_state MCP tool.",
+        "\nLCU Auto: " +
+        [
+          "Native-app consent is handled locally.",
+          "JavaScript REPL bindings and the Computer Use control turn persist only within the same logical execution context.",
+          "With a stable X-OpenAI-Session header or openai/session metadata, short-lived HTTP clients can share a context under the same authenticated principal.",
+          "Without a stable correlation identifier, each new MCP transport may use a fresh runtime; scheduled or background ChatGPT tasks may have this behavior.",
+          "Do not assume JavaScript variables, app bindings or accessibility element indices survive separate js tool calls in that mode.",
+          "Follow upstream LCU's first-call setup instructions; when continuing without confirmed context reuse, reacquire the target using cua.getApp(...) and observe its current UI state before acting within that js call.",
+          "Batch related actions and verification into one js call when safe; if a previous action's outcome is uncertain, observe the real desktop and do not blindly replay side effects.",
+          "Successful calls do not end a retained control turn, but a later call might use a different context.",
+          "Cancellation ends the control turn.",
+          "js_reset closes and replaces this context's LCU runtime without replaying previous actions; bindings are lost and the target must be observed again before input.",
+          "Reconnecting alone does not repair a broken logical context.",
+          "OS permission grants remain local and cannot be repaired by MCP reset.",
+          "Contexts expire after inactivity and are lost on service restart.",
+          "If an error mentions get_app_state, use app.getAXState() or cua.getApp(...) inside js; there is no separate get_app_state MCP tool.",
+        ].join(" "),
     },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: surface.tools }));

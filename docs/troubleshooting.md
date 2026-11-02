@@ -10,7 +10,7 @@ CLI portability does not imply an installed desktop backend. Follow the [platfor
 
 Observe the target through the documented `cua.getApp(...)` or `app.getAXState()` before input after a cancellation/reset. Do not search for an extra `get_app_state` MCP tool: that is an upstream internal name.
 
-A normal successful call should not invalidate the next call's app binding. If it does, report the client type and sanitized lifecycle metadata. Do not attach private window text or screenshots to a public issue.
+A normal successful call within the _same execution context_ should not invalidate the next call's app binding. However, a new MCP transport with no stable conversation identifier gets its own runtime. If `finder is not defined` (or another lost JavaScript variable) appears in a scheduled/background task, first distinguish a new context from a broken upstream Runtime; do not assume the previous binding exists. Follow upstream first-call setup, then reacquire the app in each subsequent `js` call, observe the current UI and batch related actions when safe. If the last action might have happened, observe before retrying. Report the client type and sanitized lifecycle metadata if bindings vanish **within a confirmed reused context**. Do not attach private window text or screenshots to a public issue.
 
 ## Too many contexts or lost bindings
 

@@ -78,6 +78,12 @@ test("real stdio MCP with a deterministic upstream, client without elicitation",
     expect(tools.tools[0]?.annotations?.readOnlyHint).toBe(false);
     expect(tools.tools[0]?.annotations?.destructiveHint).toBe(true);
     expect(c.getInstructions()).toContain("Original fixture instructions must survive.");
+    // The host may reconnect without a stable ChatGPT session correlation ID.
+    // Instructions must not promise that a different transport shares the REPL.
+    expect(c.getInstructions()).toContain("only within the same logical execution context");
+    expect(c.getInstructions()).toContain("each new MCP transport may use a fresh runtime");
+    expect(c.getInstructions()).toContain("reacquire the target");
+    expect(c.getInstructions()).toContain("do not blindly replay");
     expect(JSON.parse(firstText(await invoke(c, "approve")))).toEqual({
       action: "accept",
       content: {},

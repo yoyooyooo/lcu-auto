@@ -62,7 +62,7 @@ The shim is written to `~/.local/bin` (or `%LOCALAPPDATA%\lcu-auto\bin` on Windo
 
 Ask the client to select a harmless test app, read its state, and then perform a separate input call. Verify the visible result. Do not begin with a messaging app, an account-setting page or a valuable document.
 
-LCU's instructions describe the `cua` API. The first `js` call selects an app or reads the inventory; subsequent calls can reuse the returned binding. Only recognized native-app consent is automated. Unknown requests are cancelled, and LCU's host-app restrictions and operating-system permissions remain in force.
+LCU's instructions describe the `cua` API. The first `js` call selects an app or reads the inventory; later calls can reuse the binding **only when they share the same execution context**. A new transport without a stable conversation identifier may start a fresh JavaScript REPL. Only recognized native-app consent is automated. Unknown requests are cancelled, and LCU's host-app restrictions and operating-system permissions remain in force.
 
 ## Shared broker
 
@@ -99,7 +99,9 @@ Follow the complete [remote deployment guide](docs/deployment.md). It covers pre
 
 ## State and safety
 
-Consecutive calls retain one computer-use control turn. Successful tool returns do not end it. For ChatGPT-style short-lived clients, the broker correlates state using the verified identity plus the opaque conversation identifier; the identifier is not authentication. Other clients use connection-owned state.
+Consecutive calls **within the same execution context** retain one computer-use control turn. Successful tool returns do not end it. For ChatGPT-style short-lived clients, the broker correlates state only if the client provides a stable conversation identifier together with its verified identity; the identifier is not authentication. Other clients use connection-owned state. A new connection without a correlation identifier may use an entirely new REPL.
+
+For scheduled/background tasks that may reconnect for each call, follow LCU's first-call setup instructions, then write subsequent `js` calls so they do not depend on prior JavaScript variables: reacquire the target app, observe fresh UI state and perform related actions in the same call where practical. If an earlier action might already have taken effect, observe before retrying; never blindly repeat desktop side effects. See [lost bindings](docs/troubleshooting.md#too-many-contexts-or-lost-bindings).
 
 Discovery does not reserve an execution runtime. Idle runtimes are bounded and reclaimed; running actions are not evicted. Cancellation, reset and shutdown clean up before another queued operation starts. A timeout or lost response can conceal an action that already happened, so observe the desktop before retrying.
 
