@@ -19,9 +19,15 @@ LCU Auto 在本地处理识别出的原生 App 授权，让相关调用复用电
 
 ## 安装
 
-需要 **Node.js 22.14 或更新版本**及用于源码构建的 **Bun 1.4.3**。全局 shim 和后台服务均使用 Node 执行构建后的 `dist/cli.js`，不依赖 Bun 或 TypeScript 入口。
+需要 **Node.js 22.14 或更新版本**。推荐从 npm 安装 CLI（不需要 Bun）：
 
-**npm 发布暂缓。** 当前按下面的源码方式安装；tag 驱动发布流程已准备，但不能把它当成已经存在的 registry 版本。
+```sh
+npm install --global lcu-auto
+lcu-auto --version
+lcu-auto doctor
+```
+
+`--version` 用于确认 CLI 安装成功；`doctor` 还会检查上游 LCU 是否已安装，未安装时请按下方的上游说明准备。若要从源码安装，还需要 **Bun 1.4.3**，然后运行：
 
 ```sh
 git clone https://github.com/yoyooyooo/lcu-auto.git

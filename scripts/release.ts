@@ -8,7 +8,8 @@ import { Schema } from "effect";
 const REPOSITORY = "yoyooyooo/lcu-auto";
 const REGISTRY = "https://registry.npmjs.org";
 const PACKAGE = "lcu-auto";
-const BOOTSTRAP_VERSION = "0.4.0";
+// The first web-authorized npm publish predates Trusted Publishing and has no CI provenance.
+const BOOTSTRAP_VERSION = "0.4.1";
 const Manifest = Schema.Struct({ name: Schema.String, version: Schema.String });
 const VersionDocument = Schema.Struct({
   name: Schema.String,
@@ -290,6 +291,30 @@ async function publish() {
     command("npm", ["audit", "signatures", `--registry=${REGISTRY}/`], false, consumer);
     await provenance(document, commit, bytes);
   }
+  console.log(`Registry publication verified: ${PACKAGE}@${manifest.version}`);
+}
+
+async function createRelease() {
+  if (process.env.GITHUB_ACTIONS !== "true")
+    throw new Error("GitHub Release creation runs only in GitHub Actions");
+  await verifyTag();
+  const artifact = Schema.decodeUnknownSync(PackageCheck)(
+    JSON.parse(await readFile(".artifacts/package-check.json", "utf8")),
+  );
+  if (artifact.name !== PACKAGE || artifact.version !== manifest.version)
+    throw new Error("Packed artifact has the wrong identity");
+  const bytes = await readFile(artifact.archive);
+  if (`sha512-${createHash("sha512").update(bytes).digest("base64")}` !== artifact.integrity)
+    throw new Error("Packed artifact changed after verification");
+  const version = await registry(`${PACKAGE}/${manifest.version}`);
+  const document = version ? Schema.decodeUnknownSync(VersionDocument)(version) : undefined;
+  const latest = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(
+    (await registry(`-/package/${PACKAGE}/dist-tags`)) ?? {},
+  ).latest;
+  if (!document || document.dist.integrity !== artifact.integrity || latest !== manifest.version)
+    throw new Error("GitHub Release requires verified npm registry bytes and latest dist-tag");
+  if (manifest.version !== BOOTSTRAP_VERSION && !document.dist.attestations)
+    throw new Error("Non-bootstrap release is missing npm provenance");
   const notes =
     manifest.version === BOOTSTRAP_VERSION && !document.dist.attestations
       ? "Initial maintainer-local web-auth publish. Registry integrity and clean installation verified; this bootstrap artifact has no CI provenance."
@@ -348,4 +373,5 @@ else if (mode === "--execute") {
   command("git", ["push", "origin", `refs/tags/${tag}`]);
 } else if (mode === "verify") await verifyTag();
 else if (mode === "publish") await publish();
-else throw new Error("Use --precheck, --execute, verify <tag>, or publish <tag>");
+else if (mode === "release") await createRelease();
+else throw new Error("Use --precheck, --execute, verify <tag>, publish <tag>, or release <tag>");

@@ -2,13 +2,14 @@
 
 ## 0.4.1
 
+- First npm registry release, including the previously published source-only 0.4.0 candidate.
 - Explicit `js_reset` replaces the owned LCU runtime process, including a broken runtime retained across HTTP reconnects. It also refreshes the runtime after a desktop-app reinstall.
 - Reset waits for confirmed teardown before replacement, never replays an uncertain action, and keeps failed teardown fail-closed. A failed replacement can be retried by another explicit reset.
 - Document the distinction between transport reconnection, runtime reset and operating-system permission grants.
 
 ## 0.4.0
 
-First public CLI release, replacing a machine-specific prototype.
+First public source candidate, replacing a machine-specific prototype. This version was not published to npm.
 
 - Stable Effect 4.1.0, Effect CLI, Effect filesystem/process/HTTP services and a Node.js distribution.
 - `mcp` for stdio, optional `mcp --url` for a shared broker, and `serve` for HTTP; legacy command aliases remain available.

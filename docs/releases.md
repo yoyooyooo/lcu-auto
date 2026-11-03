@@ -1,6 +1,6 @@
 # Release operations
 
-**Current distribution: source checkout + build + global shim. npm publication is deferred until the maintainer account is usable. No publish tag should be pushed solely to test a blocked registry account.**
+**Distribution: npm CLI, with source checkout + build + global shim as an alternative.** The initial npm version is `0.4.1`; subsequent releases use GitHub Actions with npm Trusted Publishing. Never push a publish tag solely to test a blocked registry account.
 
 The package identity is `lcu-auto`; the repository is `yoyooyooo/lcu-auto`. Releases use annotated immutable `vX.Y.Z` tags. Only stable versions are enabled; prerelease publishing is deliberately rejected rather than silently assigned to `latest`.
 
@@ -17,19 +17,21 @@ The precheck requires a clean checkout on `main` equal to fetched `origin/main`,
 
 The [publish workflow](https://github.com/yoyooyooo/lcu-auto/blob/main/.github/workflows/publish.yml) verifies repository, exact tag/version/commit, ancestry to main and package identity. A new publish must come from the current main tip. It serializes releases, refuses to move `latest` backward, and publishes the exact tarball verified by `pack:check`.
 
-## First npm publish
+## First npm publish (0.4.1 bootstrap only)
 
-The real initial version is **0.4.0**, not a placeholder. A maintainer first logs in to the official registry using npm web authorization. Use a genuine terminal, or the OS's `script` utility when a non-interactive shell prevents npm from presenting its web flow. Do not print or share authorization URLs, cookies, OTPs or token values.
+The first registry release is **0.4.1**; the earlier 0.4.0 entry is a public source candidate, not an npm release. Before a trusted publisher can be configured, the maintainer must perform one local publish using official-registry web authorization. Use a genuine terminal, or the OS's `script` utility when a non-interactive shell prevents npm from presenting its web flow. Do not print or share authorization URLs, cookies, OTPs or token values.
 
 ```sh
 npm login --auth-type=web --registry=https://registry.npmjs.org/
 bun run check
 bun run pack:check
-npm publish ./.artifacts/lcu-auto-0.4.0.tgz --access public --auth-type=web --registry=https://registry.npmjs.org/
-npm view lcu-auto@0.4.0 version dist.integrity --registry=https://registry.npmjs.org/
+npm publish ./.artifacts/lcu-auto-0.4.1.tgz --access public --auth-type=web --registry=https://registry.npmjs.org/
+npm view lcu-auto@0.4.1 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 
 Open the packed manifest before publishing. It must have the intended name, version and bin, and no `catalog:`, `workspace:` or private-registry dependency. Publish the tarball, not the source directory. The path starts with `./` or is absolute to avoid npm interpreting it as a GitHub shorthand.
+
+Publish only the tarball built from the reviewed, pushed `main` commit. After registry readback succeeds, run `bun run release:precheck` and `bun run release --execute` to create and push the immutable annotated `v0.4.1` tag. Its workflow checks the already-published bootstrap artifact and creates the GitHub Release, without attempting a second npm publish.
 
 Local publishing cannot produce GitHub Actions provenance. The bootstrap version is explicitly recorded as such; later CI versions require provenance. Do not use `--provenance` in an unsupported local environment or invent a success claim from npm's initial progress output.
 

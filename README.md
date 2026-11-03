@@ -19,9 +19,15 @@ LCU Auto handles recognized native-app consent locally, keeps computer-use state
 
 ## Install
 
-You need **Node.js 22.14 or later** and **Bun 1.4.3** to build from source. The installed shim and background server run Node against the built `dist/cli.js`, not Bun or TypeScript.
+You need **Node.js 22.14 or later**. Install the CLI from npm (Bun is not required):
 
-**npm publication is pending.** Use the source installation below; tag-driven publishing is prepared but is not an available registry release yet.
+```sh
+npm install --global lcu-auto
+lcu-auto --version
+lcu-auto doctor
+```
+
+`--version` verifies the installed CLI. `doctor` additionally checks for an upstream LCU installation; if it is not installed, follow the upstream setup instructions below. For a source installation, also install **Bun 1.4.3** and run:
 
 ```sh
 git clone https://github.com/yoyooyooo/lcu-auto.git

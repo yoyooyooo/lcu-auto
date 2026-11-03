@@ -4,7 +4,7 @@ LCU Auto is a Node.js CLI and an MCP transport/lifecycle adapter. LCU itself sup
 
 | Layer                 | Contract                                                                                                                                      |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI runtime           | Node.js 22.14 or later, ESM; no Bun or Python required for the built CLI. Current distribution is source + global shim; npm is pending.       |
+| CLI runtime           | Node.js 22.14 or later, ESM; no Bun or Python required for the built CLI. npm and source installations are supported.                         |
 | Development           | Bun 1.4.3 and the checked-in lockfile.                                                                                                        |
 | Protocol              | Official MCP SDK Streamable HTTP and stdio, with a Web Request/Response boundary served by Effect's Node platform.                            |
 | Effect                | Stable `effect` and `@effect/platform-node` 4.1.0, pinned exactly. Some Effect CLI/platform modules retain upstream unstable API annotations. |
