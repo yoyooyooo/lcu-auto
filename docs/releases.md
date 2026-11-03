@@ -55,6 +55,8 @@ Saving the trusted-publisher form is not proof that OIDC publish works. An actua
 
 The workflow polls official registry visibility after a publish, compares `dist.integrity` to the actual uploaded archive and verifies the `latest` tag. A fresh directory installs that exact registry version and runs the Node CLI. For CI provenance, npm verifies attestation signatures and the release script checks the subject digest, repository, workflow, tag and commit.
 
+The registry's metadata and npm install endpoints can converge at different times. A successful publish followed by `ETARGET`/`E404` from a fresh install is a possible propagation delay, not proof the publish failed. The release script retries only these missing-version errors for a bounded period, with online cache preference; other errors remain fatal. If a release job fails after npm has accepted the version, read back its integrity and **rerun the failed job** rather than publishing or moving the tag again.
+
 GitHub Releases are created only after those checks. Re-running an existing release may repair metadata/assets, but must not republish an existing version or move its tag. If the registry already contains a version with different bytes, stop and bump the version. If a network response is lost, inspect registry state before retrying a write.
 
 The first maintainer-local publish and subsequent OIDC publishes are separate claims. Consult actual workflow runs and registry metadata rather than treating the presence of workflow YAML as delivery proof.

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Retry only missing-version npm registry propagation failures during post-publish clean installation; leave authentication, integrity and other errors fail-closed.
+
 ## 0.4.2
 
 - Verify that the GitHub Actions trusted-publishing path can publish the public package with signed provenance; no desktop-control API changes.

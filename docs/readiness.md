@@ -28,7 +28,11 @@ The 0.4.1 release candidate passed 46 hermetic automated tests and 359 assertion
 
 The public `v0.4.1` annotated tag targets commit `a2d9f66b6df5b8e734354dc5500e5a46d6de2fcd`. The official npm registry returned `lcu-auto@0.4.1` as `latest`, with SHA-512 integrity matching the locally verified archive. An independent consumer installed the registry version into an empty directory and both the npm-linked bin and Node entrypoint reported `v0.4.1`. The [tag publish workflow](https://github.com/yoyooyooo/lcu-auto/actions/runs/41665869987) completed its package verification and GitHub Release jobs successfully; the [GitHub Release](https://github.com/yoyooyooo/lcu-auto/releases/tag/v0.4.1) includes an archive whose SHA-256 matches the verified tarball. This bootstrap was an interactive maintainer-local npm publish and deliberately has **no CI provenance**.
 
-`0.4.2` is the subsequent candidate for the first actual OIDC Trusted Publishing execution; no assertion that its registry publish, attestation or GitHub Release passed is made until those surfaces are independently read back.
+## Trusted Publishing evidence (2026-11-03)
+
+The immutable `v0.4.2` tag targets commit `f1366ed0b671c94b00e4fef8e33b61e81a271969`. The [tag workflow](https://github.com/yoyooyooo/lcu-auto/actions/runs/41667478119) successfully used GitHub Actions OIDC to publish `lcu-auto@0.4.2` with npm provenance. Its first attempt failed _after npm accepted the version_, because the registry-installed consumer briefly received `ETARGET`. The failed-job rerun recognized the existing version, verified the packed bytes, ran clean npm installation and signature/provenance checks, and then created the [v0.4.2 GitHub Release](https://github.com/yoyooyooo/lcu-auto/releases/tag/v0.4.2). Both workflow jobs completed successfully, and the Release asset SHA-256 matches the verified tarball (`207fb0fb1d4d3a9a76ec2df1ba0e0a2cbeefe53e52107aa4cd3e031ad08e2972`).
+
+The official registry's `latest` tag read back as `0.4.2`; an independent clean install ran `lcu-auto v0.4.2`, and `npm audit signatures` verified package signatures and attestations. The post-tag maintenance change on `main` adds bounded retry handling for this observed propagation window; that maintenance code is **not part of the immutable v0.4.2 tag**. This establishes the OIDC release path but does not claim ongoing external uptime or live desktop support beyond the documented macOS baseline.
 
 ## Not claimed
 

@@ -4,6 +4,7 @@ import { join, resolve, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { Schema } from "effect";
+import { isRegistryPropagationError } from "./registry-install.ts";
 
 const REPOSITORY = "yoyooyooo/lcu-auto";
 const REGISTRY = "https://registry.npmjs.org";
@@ -39,6 +40,38 @@ function command(name: string, args: string[], capture = false, cwd = process.cw
       `${name} failed (${result.status}); inspect the command output before retrying`,
     );
   return (result.stdout ?? "").trim();
+}
+async function installPublishedConsumer(cwd: string) {
+  const args = [
+    "install",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--prefer-online",
+    `${PACKAGE}@${manifest.version}`,
+    `--registry=${REGISTRY}/`,
+  ];
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    const result = spawnSync("npm", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: "pipe",
+      shell: process.platform === "win32",
+      timeout: 300_000,
+    });
+    if (result.status === 0) {
+      if (result.stdout) process.stdout.write(result.stdout);
+      return;
+    }
+    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    if (!isRegistryPropagationError(output) || attempt === 12) {
+      // The install only uses the public official registry. Do not retry unrelated failures.
+      if (result.stderr) process.stderr.write(result.stderr.slice(-1500));
+      throw new Error(`Clean registry install failed (exit ${result.status})`);
+    }
+    console.log(`npm ${PACKAGE}@${manifest.version} not yet installable (attempt ${attempt}/12)`);
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
 }
 function versionNumbers(value: string): number[] {
   if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(value))
@@ -265,19 +298,7 @@ async function publish() {
     );
   const consumer = await mkdtemp(join(tmpdir(), "lcu-auto-registry-"));
   await writeFile(join(consumer, "package.json"), '{"private":true}\n');
-  command(
-    "npm",
-    [
-      "install",
-      "--ignore-scripts",
-      "--no-audit",
-      "--no-fund",
-      `${PACKAGE}@${manifest.version}`,
-      `--registry=${REGISTRY}/`,
-    ],
-    false,
-    consumer,
-  );
+  await installPublishedConsumer(consumer);
   const version = command(
     "node",
     [join(consumer, "node_modules", PACKAGE, "dist", "cli.js"), "--version"],
