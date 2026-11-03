@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- Verify that the GitHub Actions trusted-publishing path can publish the public package with signed provenance; no desktop-control API changes.
+- Document the registry-installed consumer check and the public release evidence for the initial `0.4.1` bootstrap.
+
 ## 0.4.1
 
 - First npm registry release, including the previously published source-only 0.4.0 candidate.

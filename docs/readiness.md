@@ -24,6 +24,12 @@ The 0.4.0 source candidate passed 36 local automated tests and 261 assertions, N
 
 The 0.4.1 release candidate passed 46 hermetic automated tests and 359 assertions, typecheck, lint, formatter, Node build and 68 documentation links/anchors on macOS. The verified `bun pm pack` archive includes 37 allowlisted files, excludes development artifacts and installs into an empty npm consumer directory; its CLI and bin both report 0.4.1. `bun audit` reported zero known vulnerabilities across 151 dependencies on the review date (2026-11-03). GitHub Actions had passed on the previous `main` commit; the release commit, official npm registry publication, provenance and GitHub Release are separate verification claims and must be read back after publication.
 
+## Published bootstrap evidence (2026-11-03)
+
+The public `v0.4.1` annotated tag targets commit `a2d9f66b6df5b8e734354dc5500e5a46d6de2fcd`. The official npm registry returned `lcu-auto@0.4.1` as `latest`, with SHA-512 integrity matching the locally verified archive. An independent consumer installed the registry version into an empty directory and both the npm-linked bin and Node entrypoint reported `v0.4.1`. The [tag publish workflow](https://github.com/yoyooyooo/lcu-auto/actions/runs/41665869987) completed its package verification and GitHub Release jobs successfully; the [GitHub Release](https://github.com/yoyooyooo/lcu-auto/releases/tag/v0.4.1) includes an archive whose SHA-256 matches the verified tarball. This bootstrap was an interactive maintainer-local npm publish and deliberately has **no CI provenance**.
+
+`0.4.2` is the subsequent candidate for the first actual OIDC Trusted Publishing execution; no assertion that its registry publish, attestation or GitHub Release passed is made until those surfaces are independently read back.
+
 ## Not claimed
 
 Linux desktop execution, Windows desktop-engine support, non-macOS service installation, sleep/reboot recovery and extended multi-agent operation are not established by the hermetic suite. A successful npm publish does not prove OAuth login/refresh for every client or network.
