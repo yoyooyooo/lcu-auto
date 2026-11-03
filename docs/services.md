@@ -4,7 +4,7 @@ Service installation is opt-in. `npm install` does not change your login items, 
 
 ## Install and run
 
-Build the checkout and install the global shim using the README, then install LCU and check `lcu-auto doctor`. Create the local token with `lcu-auto token`. Then:
+Install the CLI from npm (or build the source checkout and install its shim) using the README, then install LCU and check `lcu-auto doctor`. Create the local token with `lcu-auto token`. Then:
 
 ```sh
 lcu-auto service install
@@ -35,12 +35,12 @@ lcu-auto service restart
 
 Stop/restart check authenticated broker health and refuse while clients remain, or when health cannot be read. `--force-disconnect` explicitly accepts interruption. This includes idle retained conversation contexts, not only active clicks. A stop waits for launchd to actually unload before a replacement is bootstrapped.
 
-For the current source distribution, fast-forward the checkout, rebuild and reinstall the shim; stop the old service, then run `service install` again to update paths/arguments when necessary. Existing definitions are backed up. A definition not marked as managed by lcu-auto requires explicit `--replace-existing`; a currently registered service must be stopped before replacement.
+For npm installations, update with `npm install --global lcu-auto@<version>`. For source installations, fast-forward the checkout, rebuild and reinstall the shim. Stop the old service, then run `service install` again to update paths/arguments when necessary. Existing definitions are backed up. A definition not marked as managed by lcu-auto requires explicit `--replace-existing`; a currently registered service must be stopped before replacement.
 
 No rollback deletes user data. Restore the prior package and backed-up service definition, keeping the same private token/configuration. Avoid changing credentials solely to recover from a code upgrade.
 
 ## Uninstall
 
-Stop the broker first. macOS: remove its LaunchAgent file through your normal file manager. Linux: disable the user unit, remove its definition and reload the user manager. Windows: delete the named task in Task Scheduler. Then uninstall the package with `npm uninstall --global lcu-auto`.
+Stop the broker first. macOS: remove its LaunchAgent file through your normal file manager. Linux: disable the user unit, remove its definition and reload the user manager. Windows: delete the named task in Task Scheduler. For an npm installation, uninstall with `npm uninstall --global lcu-auto`; for a source installation, remove the installed shim and checkout through your normal file manager.
 
 Configuration, backups and credentials are intentionally not deleted automatically. Revoke or remove them yourself when retiring the service. A separately managed Cloudflare Tunnel must also be stopped or removed independently.

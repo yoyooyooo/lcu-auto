@@ -64,7 +64,7 @@ CLI 使用 Node.js 和平台适配路径。CI 在 macOS、Linux、Windows 上运
 }
 ```
 
-shim 写入 `~/.local/bin`（Windows 为 `%LOCALAPPDATA%\lcu-auto\bin`），必要时把该目录加入 PATH。GUI 客户端没有继承 shell 的 `PATH` 时，改填已安装命令的绝对路径。连接后应当恰好出现 **`js`** 和 **`js_reset`**。`mcp` 不输出欢迎文本，因为 stdout 只承载 MCP 消息。
+npm 安装使用 npm 的全局可执行文件目录，先确认 `lcu-auto --version` 能从 PATH 运行。只有源码的 `shim:install` 才会把 shim 写入 `~/.local/bin`（Windows 为 `%LOCALAPPDATA%\lcu-auto\bin`）。GUI 客户端没有继承 shell 的 `PATH` 时，改填已安装命令的绝对路径。连接后应当恰好出现 **`js`** 和 **`js_reset`**。`mcp` 不输出欢迎文本，因为 stdout 只承载 MCP 消息。
 
 先让客户端选择无敏感内容的测试应用、读取状态，再用下一次独立调用输入，并核对实际界面。不要一开始就测试聊天发送、账号设置或重要文档。
 

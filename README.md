@@ -64,7 +64,7 @@ Add this stdio entry to your MCP client's configuration:
 }
 ```
 
-The shim is written to `~/.local/bin` (or `%LOCALAPPDATA%\lcu-auto\bin` on Windows); add that directory to PATH when necessary. Use the absolute path to the installed command when a GUI client does not inherit your shell's `PATH`. The client should list exactly **`js`** and **`js_reset`**. `mcp` itself does not print a welcome message: stdout is reserved for MCP.
+An npm installation uses your npm global executable directory; check that `lcu-auto --version` works on PATH. Only the source `shim:install` command writes to `~/.local/bin` (or `%LOCALAPPDATA%\lcu-auto\bin` on Windows). Use the absolute path to the installed command when a GUI client does not inherit your shell's `PATH`. The client should list exactly **`js`** and **`js_reset`**. `mcp` itself does not print a welcome message: stdout is reserved for MCP.
 
 Ask the client to select a harmless test app, read its state, and then perform a separate input call. Verify the visible result. Do not begin with a messaging app, an account-setting page or a valuable document.
 
