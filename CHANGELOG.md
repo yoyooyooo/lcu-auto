@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.0
+
+- Add tailnet-only Streamable HTTP MCP access through Tailscale Serve while keeping the desktop broker bound to loopback and preserving the existing Cloudflare Access path.
+- Authenticate a configured Tailnet HTTPS origin using a distinct 256-bit bearer credential, with exact Host/Origin checks and fail-closed separation from local tokens and Cloudflare Access JWTs.
+- Support an owner-private remote token file and explicit file/environment overrides, including managed service definitions that reference credential paths without embedding secrets.
+- Document secure private Tailnet deployment, non-Funnel access, token lifecycle, and agent/client integration; add remote authentication and proxy-host regression tests.
 - Retry only missing-version npm registry propagation failures during post-publish clean installation; leave authentication, integrity and other errors fail-closed.
 
 ## 0.4.2
