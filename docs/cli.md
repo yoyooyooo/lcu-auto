@@ -27,6 +27,8 @@ The parser and generated help use `effect/cli`. Runtime errors return a nonzero 
 
 `serve` additionally accepts `--port` (1–65535, default 8789), repeated `--public-origin` (HTTPS origins), and `--access-config` (JSON file). A public origin validates Host/Origin; it is not an authentication rule.
 
+For tailnet-only HTTP MCP, `serve` accepts repeated `--tailnet-origin HTTPS_ORIGIN` (the exact Tailscale Serve origin, including nondefault port) and `--remote-token-file PATH` (default `~/.config/lcu-auto/remote.token`). Generate the independent private credential once using `lcu-auto token --token-file PATH`; restart never rotates it. Missing credentials fail closed. `LCU_AUTO_REMOTE_TOKEN_FILE` changes the default path. An unsupervised foreground `serve` may instead accept `LCU_AUTO_REMOTE_TOKEN` (unless a file path was explicitly passed); this inherited environment variable is less suitable for services. `service install` supports the flags and always stores only the file path. The remote bearer is accepted only at the configured Tailnet Host, never at localhost or Cloudflare public hosts. See [Tailnet guide](tailnet.md).
+
 `--allow-origin` requires `--chrome`. Origins must be exact HTTP(S) origins: no path, trailing slash, wildcard or embedded credential. Existing upstream forbidden-app and site-approval behavior remains.
 
 ## Paths

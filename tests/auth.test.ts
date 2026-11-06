@@ -76,3 +76,22 @@ test("public hostname rejects the local token and requires a signed edge asserti
     ),
   ).toBeUndefined();
 });
+
+test("Tailnet origin uses a separate remote bearer without broadening local or Cloudflare auth", async () => {
+  const localToken = "local-test-token-with-at-least-32-characters";
+  const remoteToken = "tailnet-test-token-with-at-least-32-characters";
+  const tailnet = { origins: ["https://mini.example-tailnet.ts.net:9443"], token: remoteToken };
+  const auth = authenticator(localToken, config, verify, tailnet);
+  const check = (url: string, bearer: string) =>
+    auth(new Request(url, { headers: { Authorization: `Bearer ${bearer}` } }));
+  expect(await check("https://mini.example-tailnet.ts.net:9443/mcp", remoteToken)).toBe("tailnet");
+  expect(await check("https://mini.example-tailnet.ts.net:9443/mcp", localToken)).toBeUndefined();
+  expect(await check("http://127.0.0.1:8789/mcp", remoteToken)).toBeUndefined();
+  expect(await check("https://lcu.example.com/mcp", remoteToken)).toBeUndefined();
+  expect(await check("https://evil.example.com/mcp", remoteToken)).toBeUndefined();
+  expect(await check("https://lcu.example.com/mcp", localToken)).toBeUndefined();
+  expect(await check("http://127.0.0.1:8789/mcp", localToken)).toBe("local");
+  expect(() =>
+    authenticator(localToken, config, verify, { ...tailnet, token: localToken }),
+  ).toThrow();
+});

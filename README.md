@@ -99,6 +99,17 @@ Installation does not start the service. Stop an existing foreground server befo
 
 ### Remote access
 
+For private Tailscale networks, use **Tailscale Serve (tailnet-only HTTPS)** with a separate bearer credential. The broker still binds to loopback and Cloudflare Access remains independent:
+
+```sh
+lcu-auto token --token-file ~/.config/lcu-auto/remote.token
+lcu-auto serve --tailnet-origin https://mini.example-tailnet.ts.net:9443 \
+  --remote-token-file ~/.config/lcu-auto/remote.token
+tailscale serve --bg --https=9443 8789
+```
+
+Configure a remote HTTP MCP client with the Serve URL ending in `/mcp` and an `Authorization: Bearer <remote-token>` header. Do not commit the credential or expose the Serve port via Funnel. For a managed service, use `lcu-auto service install` with the same `--tailnet-origin` and `--remote-token-file` flags. [Tailnet deployment and security](docs/tailnet.md) explains setup, token lifecycle and caveats.
+
 Use a named Cloudflare Tunnel and Access Managed OAuth, then start the broker with an Access configuration file. The origin verifies the signed Access assertion instead of trusting an email header. Local bearer credentials do not authenticate requests addressed to the public hostname.
 
 Follow the complete [remote deployment guide](docs/deployment.md). It covers prerequisites, OAuth discovery, callback registration, origin validation and verification. **A tunnel alone is not authentication.** No tunnel, account policy or DNS record is created automatically by installing this package.

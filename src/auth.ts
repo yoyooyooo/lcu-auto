@@ -40,6 +40,10 @@ export const AccessConfigSchema = Schema.Struct({
 export const decodeAccessConfig = Schema.decodeUnknownSync(AccessConfigSchema);
 export type AccessConfig = typeof AccessConfigSchema.Type;
 export type Authenticate = (request: Request) => Promise<string | undefined>;
+export interface TailnetAuth {
+  readonly origins: readonly string[];
+  readonly token: string;
+}
 
 export class AuthUnavailableError extends Error {
   constructor() {
@@ -90,9 +94,14 @@ export function authenticator(
   token: string,
   config?: AccessConfig,
   verify = config ? accessVerifier(config) : undefined,
+  tailnet?: TailnetAuth,
 ): Authenticate {
   if (token.length < 32) throw new Error("HTTP token must have at least 32 characters.");
   const expected = Buffer.from(`Bearer ${token}`);
+  const remote = tailnet ? Buffer.from(`Bearer ${tailnet.token}`) : undefined;
+  if (tailnet && (tailnet.token.length < 32 || tailnet.token === token))
+    throw new Error("Tailnet credential must be strong and distinct from the local credential.");
+  const tailnetHosts = new Set(tailnet?.origins.map((origin) => new URL(origin).host) ?? []);
   return async (request) => {
     const host = request.headers.get("host") ?? new URL(request.url).host;
     const isLocal = /^(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(host);
@@ -100,6 +109,12 @@ export function authenticator(
       const supplied = Buffer.from(request.headers.get("authorization") ?? "");
       return supplied.length === expected.length && timingSafeEqual(supplied, expected)
         ? "local"
+        : undefined;
+    }
+    if (remote && tailnetHosts.has(host)) {
+      const supplied = Buffer.from(request.headers.get("authorization") ?? "");
+      return supplied.length === remote.length && timingSafeEqual(supplied, remote)
+        ? "tailnet"
         : undefined;
     }
     if (!config || !verify || host !== new URL(config.publicOrigin).host) return undefined;

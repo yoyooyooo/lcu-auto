@@ -92,6 +92,8 @@ export const serviceStatus = (name: string) =>
 export interface InstallServiceOptions {
   name: string;
   tokenFile: string;
+  remoteTokenFile: string;
+  tailnetOrigins: readonly string[];
   port: number;
   prefix: string;
   scope: "always" | "session" | "once";
@@ -106,6 +108,7 @@ export const installService = (options: InstallServiceOptions) =>
     const path = yield* Path.Path;
     const paths = runtimePaths();
     const tokenFile = expandPath(options.tokenFile);
+    const remoteTokenFile = expandPath(options.remoteTokenFile);
     const entry = yield* fs.realPath(expandPath(process.argv[1] ?? ""));
     const node = yield* fs.realPath(process.execPath);
     const args = [
@@ -119,6 +122,8 @@ export const installService = (options: InstallServiceOptions) =>
       "--scope",
       options.scope,
       ...(options.accessConfig ? ["--access-config", expandPath(options.accessConfig)] : []),
+      ...options.tailnetOrigins.flatMap((origin) => ["--tailnet-origin", origin]),
+      ...(options.tailnetOrigins.length ? ["--remote-token-file", remoteTokenFile] : []),
       ...(options.command ? ["--lcu-command", expandPath(options.command)] : []),
     ];
     const plan = servicePlan({
@@ -137,6 +142,12 @@ export const installService = (options: InstallServiceOptions) =>
     });
     if (options.dryRun) return { installed: false, ...plan };
     yield* readTokenEffect(tokenFile);
+    if (options.tailnetOrigins.length) {
+      const remoteToken = yield* readTokenEffect(remoteTokenFile);
+      const localToken = yield* readTokenEffect(tokenFile);
+      if (remoteToken === localToken)
+        return yield* Effect.fail(new Error("Tailnet token must differ from local token"));
+    }
     if (options.accessConfig) yield* fs.access(expandPath(options.accessConfig));
     const previous = yield* fs.exists(plan.definitionPath);
     if (previous) {

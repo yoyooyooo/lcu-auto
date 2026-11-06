@@ -19,6 +19,13 @@ const text = (name: string, description: string) =>
 const tokenFlag = text("token-file", "Owner-private local credential file").pipe(
   Flag.withDefault(paths.tokenFile),
 );
+const remoteTokenFlag = text("remote-token-file", "Owner-private Tailnet credential file").pipe(
+  Flag.optional,
+);
+const tailnetOriginsFlag = text(
+  "tailnet-origin",
+  "Tailnet-only HTTPS Serve origin authorized by a separate remote token; repeatable",
+).pipe(Flag.atLeast(0));
 const runtimeFlags = {
   prefix: text("lcu-dir", "Installed LCU prefix containing current/adapters/client.mjs").pipe(
     Flag.withAlias("prefix"),
@@ -104,6 +111,8 @@ const serve = Command.make(
   {
     ...runtimeFlags,
     tokenFile: tokenFlag,
+    remoteTokenFile: remoteTokenFlag,
+    tailnetOrigins: tailnetOriginsFlag,
     port: Flag.Int("port").pipe(
       Flag.withDefault(8789),
       Flag.withDescription("Loopback HTTP port (1–65535)"),
@@ -141,7 +150,27 @@ const serve = Command.make(
         });
         if (access && !publicOrigins.includes(access.publicOrigin))
           publicOrigins.push(access.publicOrigin);
+        const tailnetOrigins = input.tailnetOrigins.map((value) => {
+          const origin = exactOrigin(value);
+          if (!origin.startsWith("https://")) throw new Error("Tailnet origins require HTTPS");
+          if (publicOrigins.includes(origin))
+            throw new Error("Tailnet origin must not also be a public/Cloudflare origin");
+          return origin;
+        });
         const token = await readToken(expandPath(input.tokenFile));
+        const remoteToken = tailnetOrigins.length
+          ? !Option.isSome(input.remoteTokenFile) && process.env.LCU_AUTO_REMOTE_TOKEN
+            ? process.env.LCU_AUTO_REMOTE_TOKEN
+            : await readToken(
+                expandPath(
+                  Option.isSome(input.remoteTokenFile)
+                    ? input.remoteTokenFile.value
+                    : paths.remoteTokenFile,
+                ),
+              )
+          : undefined;
+        if (remoteToken && (remoteToken.length < 32 || remoteToken === token))
+          throw new Error("Tailnet credential must be strong and distinct from local token");
         const factory = await upstreamFactory(
           runtimeOptions(input),
           stderrAudit,
@@ -152,6 +181,7 @@ const serve = Command.make(
           token,
           publicOrigins,
           ...(access ? { access } : {}),
+          ...(remoteToken ? { tailnet: { token: remoteToken, origins: tailnetOrigins } } : {}),
         });
         stderrAudit("http_listening", { url: server.url, version: VERSION, scope: input.scope });
         return server;
@@ -241,6 +271,8 @@ const service = Command.make("service").pipe(
         ...runtimeFlags,
         name: serviceName,
         tokenFile: tokenFlag,
+        remoteTokenFile: remoteTokenFlag,
+        tailnetOrigins: tailnetOriginsFlag,
         port: Flag.Int("port").pipe(Flag.withDefault(8789)),
         accessConfig: text("access-config", "Cloudflare Access config path").pipe(Flag.optional),
         replace: Flag.Boolean("replace-existing").pipe(Flag.withDefault(false)),
@@ -257,6 +289,10 @@ const service = Command.make("service").pipe(
           const result = yield* installService({
             name: input.name,
             tokenFile: input.tokenFile,
+            remoteTokenFile: Option.isSome(input.remoteTokenFile)
+              ? input.remoteTokenFile.value
+              : paths.remoteTokenFile,
+            tailnetOrigins: input.tailnetOrigins,
             port: input.port,
             prefix: input.prefix,
             scope: input.scope,

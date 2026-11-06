@@ -7,6 +7,7 @@ export interface RuntimePaths {
   readonly stateDir: string;
   readonly lcuDir: string;
   readonly tokenFile: string;
+  readonly remoteTokenFile: string;
 }
 
 /** Pure platform policy; injected inputs make Windows and XDG behavior testable anywhere. */
@@ -41,6 +42,7 @@ export function runtimePaths(
       platform === "linux" ? "/opt/lcu" : path.join(dataBase, "lcu"),
     ),
     tokenFile: absolute(env.LCU_AUTO_TOKEN_FILE, path.join(configDir, "http.token")),
+    remoteTokenFile: absolute(env.LCU_AUTO_REMOTE_TOKEN_FILE, path.join(configDir, "remote.token")),
   };
 }
 

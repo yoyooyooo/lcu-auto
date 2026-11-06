@@ -14,6 +14,8 @@ lcu-auto service status
 
 The definition points to the resolved Node executable and the installed `dist/cli.js`, not the source checkout. Arguments are explicit so a GUI login does not need to source your shell profile. Access configuration and token paths are references, not secret values.
 
+For a Tailnet-only HTTP MCP endpoint, create a separate owner-private token file first, then pass `--tailnet-origin https://HOST.ts.net:PORT --remote-token-file PATH` to `service install`. Only the file **path** is persisted in launchd/systemd/Task Scheduler; startup reads the token and fails closed if it is missing. Configure Tailscale Serve separately (never Funnel). See [Tailnet guide](tailnet.md).
+
 Use `service install --dry-run` to inspect the native definition and registration commands without writing them. Use `--name NAME` consistently to run an additional instance; choose a different port and credentials as appropriate.
 
 ## Platform behavior

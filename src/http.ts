@@ -8,6 +8,7 @@ import {
   AuthUnavailableError,
   type AccessConfig,
   type Authenticate,
+  type TailnetAuth,
 } from "./auth.ts";
 import { createMcpServer, DesktopQueue, type Surface, type ToolCall } from "./session.ts";
 import { publicSurface, stderrAudit, type Audit, type Upstream } from "./lcu.ts";
@@ -22,6 +23,7 @@ export interface HttpOptions {
   maxTransports?: number;
   discoveryIdleMs?: number;
   access?: AccessConfig;
+  tailnet?: TailnetAuth;
 }
 const json = (status: number, message: string) => Response.json({ error: message }, { status });
 type TransportEntry = {
@@ -38,7 +40,12 @@ export async function startHttp(
   factory: () => Upstream,
   options: HttpOptions,
   audit: Audit = stderrAudit,
-  authenticate: Authenticate = authenticator(options.token, options.access),
+  authenticate: Authenticate = authenticator(
+    options.token,
+    options.access,
+    undefined,
+    options.tailnet,
+  ),
 ) {
   if (options.token.length < 32) throw new Error("HTTP token must have at least 32 characters.");
   const queue = new DesktopQueue();
@@ -60,7 +67,7 @@ export async function startHttp(
   let closePromise: Promise<void> | undefined;
   let surfacePromise: Promise<Surface> | undefined;
   let port = options.port;
-  const publicOrigins = new Set(options.publicOrigins);
+  const publicOrigins = new Set([...options.publicOrigins, ...(options.tailnet?.origins ?? [])]);
 
   /** Discover the original schemas once per broker, never a permanent process per tools/list. */
   function surface() {

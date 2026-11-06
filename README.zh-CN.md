@@ -99,6 +99,17 @@ lcu-auto service status
 
 ### 远程访问
 
+对于私有 Tailscale 网络，可以用 **Tailscale Serve（仅 Tailnet 可访问的 HTTPS）** 和独立的远程 Bearer Token。Broker 继续只监听本机 loopback，Cloudflare Access 认证保持独立：
+
+```sh
+lcu-auto token --token-file ~/.config/lcu-auto/remote.token
+lcu-auto serve --tailnet-origin https://mini.example-tailnet.ts.net:9443 \
+  --remote-token-file ~/.config/lcu-auto/remote.token
+tailscale serve --bg --https=9443 8789
+```
+
+远端 HTTP MCP 客户端直接使用 Serve HTTPS 地址（以 `/mcp` 结尾）和 `Authorization: Bearer <remote-token>`。不要把 Token 写入 Git 中的配置，也不要使用 Funnel 公开此入口。已有用户服务可带相同的 `--tailnet-origin` 与 `--remote-token-file` 参数重新安装定义。完整配置、安全边界和 Token 生命周期见 [Tailnet 部署指南](docs/tailnet.md)。
+
 通过 Cloudflare named tunnel 和 Access Managed OAuth 接入，再使用 Access 配置文件启动后台。源站会验证签名后的 Access assertion，不相信单独的邮箱 header。本机 bearer token 不能认证发往公网 hostname 的请求。
 
 按照[远程部署指南](docs/deployment.md)配置前提、OAuth 发现、回调、源站校验和验证。**只有 tunnel 不等于有认证。** 安装 npm 包不会自动创建隧道、账号策略或 DNS。
