@@ -26,7 +26,9 @@ function firstText(result: Awaited<ReturnType<typeof invoke>>) {
   if (!item || item.type !== "text") throw new Error("Expected text result");
   return item.text;
 }
-async function fixtureHttp(options: { idleMs?: number; maxSessions?: number } = {}) {
+async function fixtureHttp(
+  options: { idleMs?: number; maxSessions?: number; now?: () => number } = {},
+) {
   const directory = await scratch();
   const trace = resolve(directory, "trace.jsonl");
   const factory = await upstreamFactory(
@@ -255,7 +257,10 @@ test("cancellation reaches upstream and Interrupt cleanup precedes the next oper
 }, 30_000);
 
 test("idle HTTP sessions expire and capacity retires idle transport sessions", async () => {
-  const f = await fixtureHttp({ idleMs: 150, maxSessions: 1 });
+  // Keep protocol RTT and scheduler jitter out of the expiry boundary. On slow
+  // CI machines, a 150ms wall timer can expire the peer before its next call.
+  let now = 1_000;
+  const f = await fixtureHttp({ idleMs: 150, maxSessions: 1, now: () => now });
   try {
     const a = await f.connect();
     const b = await f.connect();
@@ -269,7 +274,8 @@ test("idle HTTP sessions expire and capacity retires idle transport sessions", a
     expect(firstText(retired)).toContain("LCU_CONTEXT_RESET_REQUIRED");
     expect(f.http.sessionCount).toBe(2); // only execution capacity was reclaimed
     expect(JSON.parse(firstText(await invoke(b.client, "get"))).memory).toBe(42);
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    now += 351;
+    await f.http.sweep();
     expect(f.http.sessionCount).toBe(0);
     const fresh = await f.connect();
     expect((await fresh.client.listTools()).tools.length).toBe(2);
