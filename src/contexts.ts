@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { createExecution, type DesktopQueue, type Execution, type ToolCall } from "./session.ts";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import {
+  createExecution,
+  UpstreamTeardownUnconfirmedError,
+  type DesktopQueue,
+  type Execution,
+} from "./session.ts";
 import { type Upstream, type Audit } from "./lcu.ts";
 
 /** Correlation hints are not credentials. Namespace them inside a verified principal. */
@@ -45,14 +51,35 @@ export class ContextCapacityError extends Error {
 type Entry = {
   execution: Promise<Execution>;
   calls: number;
-  touched: number;
-  closing: Promise<void> | undefined;
+  idleSince: number;
+  principal: string;
+  kind: "transport" | "conversation";
+  generation: number;
+  needsReset: boolean;
+  phase: "creating" | "ready" | "retiring" | "quarantined";
+  retirement?: Promise<void>;
 };
+
+export const RESET_REQUIRED = "LCU_CONTEXT_RESET_REQUIRED";
+const resetRequired = (): CallToolResult => ({
+  isError: true,
+  content: [
+    {
+      type: "text",
+      text: `${RESET_REQUIRED}: the JavaScript context is not initialized, is absent, or has expired. This code was not executed. Call js_reset, reacquire the app, and observe its UI before input. Do not replay an uncertain earlier action.`,
+    },
+  ],
+});
+const unavailable = (message: string): CallToolResult => ({
+  isError: true,
+  content: [{ type: "text", text: message }],
+});
 
 /** Bound expensive runtimes, not discovery requests or disposable MCP connections. */
 export class ExecutionContexts {
   private readonly entries = new Map<string, Entry>();
   private stopped = false;
+  private nextGeneration = 0;
   constructor(
     private readonly factory: () => Upstream,
     private readonly queue: DesktopQueue,
@@ -60,6 +87,7 @@ export class ExecutionContexts {
     private readonly limit: number,
     private readonly idleMs: number,
     private readonly reclaimAtCapacity?: (principal: string) => Promise<void>,
+    private readonly now: () => number = () => performance.now(),
   ) {}
 
   get size() {
@@ -68,46 +96,89 @@ export class ExecutionContexts {
   get activeCalls() {
     return [...this.entries.values()].reduce((sum, entry) => sum + entry.calls, 0);
   }
+  get snapshot() {
+    const entries = [...this.entries.values()];
+    const idle = entries.filter((entry) => entry.phase === "ready" && entry.calls === 0);
+    return {
+      executionContexts: entries.length,
+      activeCalls: this.activeCalls,
+      idleExecutionContexts: idle.length,
+      closingExecutionContexts: entries.filter((entry) => entry.phase === "retiring").length,
+      quarantinedExecutionContexts: entries.filter((entry) => entry.phase === "quarantined").length,
+      oldestExecutionIdleMs: idle.length
+        ? Math.max(0, Math.floor(this.now() - Math.min(...idle.map((entry) => entry.idleSince))))
+        : null,
+    };
+  }
   isIdle(key: string) {
     const entry = this.entries.get(key);
-    return entry !== undefined && entry.calls === 0 && !entry.closing;
+    return entry?.phase === "ready" && entry.calls === 0;
   }
-  touch(key: string) {
-    const entry = this.entries.get(key);
-    if (entry) entry.touched = Date.now();
+  oldestIdleTransport(principal: string, eligible: (key: string) => boolean = () => true) {
+    const candidate = [...this.entries]
+      .filter(
+        ([key, entry]) =>
+          eligible(key) &&
+          entry.principal === principal &&
+          entry.kind === "transport" &&
+          entry.phase === "ready" &&
+          entry.calls === 0,
+      )
+      .sort(([, a], [, b]) => a.idleSince - b.idleSince)[0];
+    return candidate?.[0];
   }
   readonly call = async (
     key: string,
     principal: string,
-    ...args: Parameters<ToolCall>
-  ): ReturnType<ToolCall> => {
+    name: string,
+    args: Record<string, unknown>,
+    context: { requestId: string | number; signal: AbortSignal },
+    permission: "first-use" | "retained" = "first-use",
+    kind: "transport" | "conversation" = "transport",
+  ): Promise<CallToolResult> => {
     if (this.stopped) throw new Error("Server is shutting down.");
     let entry = this.entries.get(key);
-    if (entry?.closing)
-      throw new Error("This context is closing. Observe the target after reconnecting.");
+    if (entry?.phase === "retiring" || entry?.phase === "quarantined")
+      return unavailable(
+        "The owned LCU runtime is closing or its teardown was not confirmed. No new action was started. Do not retry until the broker is healthy.",
+      );
+    if (entry?.needsReset && name === "js") return resetRequired();
+    // A correlated HTTP request has no bounded history that distinguishes its
+    // first js from an old js after GC. Require explicit recovery for both.
+    if (!entry && name === "js" && permission === "retained") return resetRequired();
     if (!entry) {
-      // Only the HTTP broker can safely retire an idle transport together with
-      // its MCP session. Recheck after asynchronous teardown before reserving.
+      // Capacity reclaim must preserve the transport and its recovery marker.
       if (this.entries.size >= this.limit) {
         await this.reclaimAtCapacity?.(principal);
+        if (this.stopped) throw new Error("Server is shutting down.");
         entry = this.entries.get(key);
-        if (entry?.closing)
-          throw new Error("This context is closing. Observe the target after reconnecting.");
+        if (entry?.phase === "retiring" || entry?.phase === "quarantined")
+          return unavailable(
+            "The owned LCU runtime is closing or quarantined. No action was started.",
+          );
+        if (entry?.needsReset && name === "js") return resetRequired();
       }
     }
     if (!entry) {
       if (this.entries.size >= this.limit) throw new ContextCapacityError();
       // Reserve synchronously before connecting so concurrent requests cannot exceed the limit.
       entry = {
-        execution: createExecution(this.factory, this.queue, this.audit),
+        execution: createExecution(this.factory, this.queue, this.audit, {
+          coldReset: name === "js_reset",
+        }),
         calls: 0,
-        touched: Date.now(),
-        closing: undefined,
+        idleSince: this.now(),
+        principal,
+        kind,
+        generation: ++this.nextGeneration,
+        needsReset: name === "js_reset",
+        phase: "creating",
       };
       this.entries.set(key, entry);
       this.audit("execution_context_created", {
         context: key.slice(0, 12),
         contexts: this.entries.size,
+        generation: entry.generation,
       });
     }
     const current = entry;
@@ -117,24 +188,53 @@ export class ExecutionContexts {
       try {
         execution = await current.execution;
       } catch (error) {
-        if (this.entries.get(key) === current) this.entries.delete(key);
+        if (this.entries.get(key) === current && current.phase !== "retiring") {
+          if (error instanceof UpstreamTeardownUnconfirmedError) {
+            current.phase = "quarantined";
+            this.audit("execution_context_quarantined", {
+              context: key.slice(0, 12),
+              generation: current.generation,
+            });
+          } else this.entries.delete(key);
+        }
         throw error;
       }
-      return await execution.call(...args);
+      if (current.phase === "creating") current.phase = "ready";
+      if (current.phase !== "ready")
+        return unavailable("This LCU context is retiring. No new action was started.");
+      const result = await execution.call(name, args, context);
+      if (name === "js_reset" && result.isError !== true) current.needsReset = false;
+      return result;
     } finally {
       current.calls--;
-      current.touched = Date.now();
+      current.idleSince = this.now();
     }
   };
-  close(key: string): Promise<void> {
+  close(
+    key: string,
+    reason: "idle" | "capacity" | "transport" | "shutdown" = "transport",
+  ): Promise<void> {
     const entry = this.entries.get(key);
     if (!entry) return Promise.resolve();
-    if (entry.closing) return entry.closing;
+    if (entry.phase === "quarantined")
+      return Promise.reject(new UpstreamTeardownUnconfirmedError());
+    if (entry.retirement) return entry.retirement;
     // Keep the slot occupied until teardown finishes; do not overlap replacement runtimes.
-    entry.closing = (async () => {
+    entry.phase = "retiring";
+    entry.retirement = (async () => {
       try {
-        await (await entry.execution).close();
+        let execution: Execution;
+        try {
+          execution = await entry.execution;
+        } catch (error) {
+          // Construction already closed its upstream unless it explicitly says otherwise.
+          if (error instanceof UpstreamTeardownUnconfirmedError) throw error;
+          if (this.entries.get(key) === entry) this.entries.delete(key);
+          return;
+        }
+        await execution.close();
       } catch (error) {
+        entry.phase = "quarantined";
         this.audit("execution_context_close_failed", { context: key.slice(0, 12) });
         // An unconfirmed teardown must not free a slot for another runtime.
         // Keep this context quarantined until the broker can be restarted.
@@ -144,20 +244,33 @@ export class ExecutionContexts {
       this.audit("execution_context_closed", {
         context: key.slice(0, 12),
         contexts: this.entries.size,
+        reason,
+        generation: entry.generation,
       });
     })();
-    return entry.closing;
+    return entry.retirement;
   }
   async sweep() {
-    const now = Date.now();
+    const now = this.now();
     await Promise.allSettled(
       [...this.entries]
-        .filter(([, entry]) => !entry.calls && now - entry.touched > this.idleMs)
-        .map(([key]) => this.close(key)),
+        .filter(
+          ([, entry]) =>
+            entry.phase === "ready" && entry.calls === 0 && now - entry.idleSince > this.idleMs,
+        )
+        .map(([key]) => this.close(key, "idle")),
     );
   }
   async shutdown() {
     this.stopped = true;
-    await Promise.all([...this.entries.keys()].map((key) => this.close(key)));
+    const results = await Promise.allSettled(
+      [...this.entries.keys()].map((key) => this.close(key, "shutdown")),
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length)
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        "Some LCU contexts could not be confirmed closed",
+      );
   }
 }

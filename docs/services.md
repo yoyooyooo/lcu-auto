@@ -37,6 +37,10 @@ lcu-auto service restart
 
 Stop/restart check authenticated broker health and refuse while clients remain, or when health cannot be read. `--force-disconnect` explicitly accepts interruption. This includes idle retained conversation contexts, not only active clicks. A stop waits for launchd to actually unload before a replacement is bootstrapped.
 
+`service status` reports both lightweight client transports and expensive execution slots, including idle, closing and quarantined states. Two retained transports with zero execution contexts are normal for clients that remain connected and send heartbeats. The older `sessions` value is an aggregate of transport and execution counts, not a number of Computer Use jobs. An absent field on a previous Broker version appears as `null` (unknown). Idle GC does not authorize `stop` or `restart` to silently disconnect connected clients; use `--force-disconnect` only when interruption is explicitly acceptable.
+
+The Broker also reports `quarantinedDiscoveryProbes` separately. A temporary schema-discovery process whose shutdown is unconfirmed blocks further discovery in that Broker instead of spawning replacements. It requires diagnosis and an explicitly authorized restart; no GC sweep automatically retries the uncertain close.
+
 For npm installations, update with `npm install --global lcu-auto@<version>`. For source installations, fast-forward the checkout, rebuild and reinstall the shim. Stop the old service, then run `service install` again to update paths/arguments when necessary. Existing definitions are backed up. A definition not marked as managed by lcu-auto requires explicit `--replace-existing`; a currently registered service must be stopped before replacement.
 
 No rollback deletes user data. Restore the prior package and backed-up service definition, keeping the same private token/configuration. Avoid changing credentials solely to recover from a code upgrade.

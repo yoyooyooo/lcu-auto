@@ -10,7 +10,13 @@ import {
   type Authenticate,
   type TailnetAuth,
 } from "./auth.ts";
-import { createMcpServer, DesktopQueue, type Surface, type ToolCall } from "./session.ts";
+import {
+  createMcpServer,
+  DesktopQueue,
+  UpstreamTeardownUnconfirmedError,
+  type Surface,
+  type ToolCall,
+} from "./session.ts";
 import { publicSurface, stderrAudit, type Audit, type Upstream } from "./lcu.ts";
 import { conversationId, contextKey, ContextCapacityError, ExecutionContexts } from "./contexts.ts";
 
@@ -22,6 +28,8 @@ export interface HttpOptions {
   maxSessions?: number;
   maxTransports?: number;
   discoveryIdleMs?: number;
+  /** Injectable monotonic clock for deterministic lifecycle tests. */
+  now?: () => number;
   access?: AccessConfig;
   tailnet?: TailnetAuth;
 }
@@ -49,8 +57,9 @@ export async function startHttp(
 ) {
   if (options.token.length < 32) throw new Error("HTTP token must have at least 32 characters.");
   const queue = new DesktopQueue();
+  const now = options.now ?? (() => performance.now());
   const idleMs = options.idleMs ?? 600_000;
-  const discoveryIdleMs = options.discoveryIdleMs ?? Math.min(idleMs, 60_000);
+  const discoveryIdleMs = options.discoveryIdleMs ?? Math.min(idleMs, 120_000);
   const contexts = new ExecutionContexts(
     factory,
     queue,
@@ -58,6 +67,7 @@ export async function startHttp(
     options.maxSessions ?? 8,
     idleMs,
     reclaimIdleTransport,
+    now,
   );
   const sessions = new Map<string, TransportEntry>();
   const initializing = new Set<Promise<void>>();
@@ -66,6 +76,7 @@ export async function startHttp(
   let closing = false;
   let closePromise: Promise<void> | undefined;
   let surfacePromise: Promise<Surface> | undefined;
+  let discoveryCloseUnconfirmed = false;
   let port = options.port;
   const publicOrigins = new Set([...options.publicOrigins, ...(options.tailnet?.origins ?? [])]);
 
@@ -73,14 +84,30 @@ export async function startHttp(
   function surface() {
     return (surfacePromise ??= (async () => {
       const upstream = factory();
+      const closeProbe = async () => {
+        try {
+          await upstream.close();
+        } catch {
+          throw new UpstreamTeardownUnconfirmedError();
+        }
+      };
+      let discovered: Surface;
       try {
         await upstream.connect();
-        return publicSurface(upstream);
-      } finally {
-        await upstream.close();
+        discovered = publicSurface(upstream);
+      } catch (error) {
+        await closeProbe();
+        throw error;
       }
+      await closeProbe();
+      return discovered;
     })().catch((error) => {
-      surfacePromise = undefined;
+      if (error instanceof UpstreamTeardownUnconfirmedError) {
+        // Discovery also owns a process. Retain the rejected promise instead
+        // of spawning unbounded replacements outside the execution limit.
+        discoveryCloseUnconfirmed = true;
+        audit("discovery_upstream_quarantined");
+      } else surfacePromise = undefined;
       throw error;
     }));
   }
@@ -89,36 +116,48 @@ export async function startHttp(
     if (!entry) return;
     sessions.delete(id);
     try {
-      await contexts.close(entry.key);
+      await contexts.close(entry.key, "transport");
     } finally {
       await entry.server.close();
     }
   }
   async function reclaimIdleTransport(principal: string) {
-    // A fresh transport without a conversation identifier must not starve all
-    // later callers for the full idle TTL. At capacity, retire the oldest
-    // transport-owned execution only after its last request has completed.
-    // Explicitly correlated conversation contexts are never candidates.
-    const oldest = [...sessions]
-      .filter(
-        ([, entry]) =>
-          entry.principal === principal &&
-          entry.used &&
-          entry.active === 0 &&
-          contexts.isIdle(entry.key),
-      )
-      .sort(([, a], [, b]) => a.touched - b.touched)[0];
-    if (!oldest) return;
-    const [id, entry] = oldest;
-    await drop(id);
-    audit("idle_transport_reclaimed_at_capacity", { context: entry.key.slice(0, 12) });
+    // Release execution capacity only. The healthy MCP client may continue
+    // pinging this transport and can explicitly reset before its next js.
+    const eligible = new Set(
+      [...sessions.values()]
+        .filter((entry) => entry.principal === principal && entry.used && entry.active === 0)
+        .map((entry) => entry.key),
+    );
+    const key = contexts.oldestIdleTransport(principal, (key) => eligible.has(key));
+    if (key) await contexts.close(key, "capacity");
   }
-  function invoke(key: string, principal: string, signal?: AbortSignal): ToolCall {
-    return (name, args, extra) =>
-      contexts.call(key, principal, name, args, {
-        requestId: extra.requestId,
-        signal: AbortSignal.any([extra.signal, shutdown.signal, ...(signal ? [signal] : [])]),
-      });
+  function invoke(
+    key: string,
+    principal: string,
+    signal?: AbortSignal,
+    kind: "transport" | "conversation" = "conversation",
+    transportId?: string,
+  ): ToolCall {
+    return (name, args, extra) => {
+      const entry = transportId ? sessions.get(transportId) : undefined;
+      // The first js of a newly initialized stateful transport remains backward
+      // compatible. Every later js requires a retained context or explicit reset.
+      const firstUse = kind === "transport" && entry?.used === false && name === "js";
+      if (entry && (name === "js" || name === "js_reset")) entry.used = true;
+      return contexts.call(
+        key,
+        principal,
+        name,
+        args,
+        {
+          requestId: extra.requestId,
+          signal: AbortSignal.any([extra.signal, shutdown.signal, ...(signal ? [signal] : [])]),
+        },
+        firstUse ? "first-use" : "retained",
+        kind,
+      );
+    };
   }
   async function serveStateless(
     request: Request,
@@ -213,8 +252,9 @@ export async function startHttp(
         version: VERSION,
         sessions: sessions.size + contexts.size,
         transports: sessions.size,
-        executionContexts: contexts.size,
-        activeCalls: contexts.activeCalls,
+        connectedTransports: sessions.size,
+        ...contexts.snapshot,
+        quarantinedDiscoveryProbes: discoveryCloseUnconfirmed ? 1 : 0,
         pendingRequests: stateless.size + initializing.size,
       });
     if (url.pathname !== "/mcp") return json(404, "Not found.");
@@ -261,9 +301,7 @@ export async function startHttp(
       const entry = sessions.get(id);
       if (!entry || entry.principal !== principal)
         return json(404, "Unknown or expired MCP session. Initialize a new session.");
-      entry.touched = Date.now();
-      contexts.touch(entry.key);
-      if (rpc && "method" in rpc && rpc.method === "tools/call") entry.used = true;
+      entry.touched = now();
       entry.active++;
       try {
         return await entry.transport.handleRequest(
@@ -275,13 +313,16 @@ export async function startHttp(
         return json(500, "MCP request failed.");
       } finally {
         entry.active--;
-        entry.touched = Date.now();
+        entry.touched = now();
       }
     }
     if (request.method !== "POST" || !isInitializeRequest(body))
       return json(400, "Initialize a new MCP session first.");
     if (sessions.size + initializing.size >= (options.maxTransports ?? 64)) {
-      const unused = [...sessions].find(([, entry]) => !entry.used && entry.active === 0);
+      const unused = [...sessions].find(
+        ([, entry]) =>
+          entry.active === 0 && now() - entry.touched > (entry.used ? idleMs : discoveryIdleMs),
+      );
       if (unused) await drop(unused[0]);
       else return json(429, "Too many live MCP transports; no active context was evicted.");
     }
@@ -295,7 +336,11 @@ export async function startHttp(
     try {
       const info = await surface();
       if (closing) return json(503, "Server is shutting down.");
-      const protocol = createMcpServer(info, invoke(key, principal), audit);
+      const protocol = createMcpServer(
+        info,
+        invoke(key, principal, undefined, "transport", newId),
+        audit,
+      );
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => newId,
         onsessionclosed: () => drop(newId),
@@ -305,7 +350,7 @@ export async function startHttp(
         transport,
         principal,
         key,
-        touched: Date.now(),
+        touched: now(),
         used: false,
         active: 0,
       });
@@ -323,18 +368,25 @@ export async function startHttp(
     }
   }, options.port);
   port = server.port ?? options.port;
-  const sweep = setInterval(
+  async function sweep() {
+    const tick = now();
+    await Promise.allSettled(
+      [...sessions]
+        .filter(
+          ([, entry]) =>
+            entry.active === 0 && tick - entry.touched > (entry.used ? idleMs : discoveryIdleMs),
+        )
+        .map(([id]) => drop(id).catch(() => audit("idle_transport_close_failed"))),
+    );
+    await contexts.sweep();
+  }
+  const sweepTimer = setInterval(
     () => {
-      const now = Date.now();
-      for (const [id, entry] of sessions)
-        if (!entry.active && now - entry.touched > (entry.used ? idleMs : discoveryIdleMs)) {
-          void drop(id).catch(() => audit("idle_transport_close_failed"));
-        }
-      void contexts.sweep();
+      void sweep().catch(() => audit("idle_gc_failed"));
     },
     Math.min(30_000, Math.max(50, Math.min(idleMs, discoveryIdleMs) / 2)),
   );
-  sweep.unref();
+  sweepTimer.unref();
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     get sessionCount() {
@@ -343,17 +395,28 @@ export async function startHttp(
     get contextCount() {
       return contexts.size;
     },
+    /** Internal deterministic clock-driven probe; no HTTP endpoint is added. */
+    sweep,
     close(): Promise<void> {
       if (closePromise) return closePromise;
       closing = true;
       shutdown.abort();
-      clearInterval(sweep);
+      clearInterval(sweepTimer);
       closePromise = (async () => {
         await Promise.allSettled(initializing);
-        await Promise.allSettled([...sessions.keys()].map(drop));
-        await contexts.shutdown();
-        await surfacePromise?.catch(() => {});
-        await server.close();
+        const results = await Promise.allSettled([
+          ...[...sessions.keys()].map(drop),
+          contexts.shutdown(),
+          surfacePromise,
+        ]);
+        // Even a quarantined runtime must not keep the HTTP listener open.
+        const listener = await Promise.allSettled([server.close()]);
+        const rejected = [...results, ...listener].filter((result) => result.status === "rejected");
+        if (rejected.length)
+          throw new AggregateError(
+            rejected.map((result) => result.reason),
+            "LCU broker shutdown has unconfirmed cleanup",
+          );
       })();
       return closePromise;
     },

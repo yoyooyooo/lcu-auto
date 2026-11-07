@@ -39,6 +39,8 @@ The broker continues binding `127.0.0.1:8789`. Tailscale Serve terminates HTTPS 
 
 Configure the client with `https://mini.example-tailnet.ts.net:9443/mcp` and a secret-sourced header `Authorization: Bearer <remote-token>`. This is an HTTP MCP endpoint; there is no SSH process to maintain. Check that an unauthenticated request gets `401`, an authorized health request gets `200`, and `initialize` and `tools/list` return `js` and `js_reset`. Finish with a harmless UI observation before trying desktop input. Local and Cloudflare endpoints must keep rejecting the remote bearer.
 
+Remote clients retain their HTTP transport even after the desktop execution context expires. The next `js` for that retained context returns `LCU_CONTEXT_RESET_REQUIRED` without running code. Call `js_reset`, reacquire the target app and observe it before input. A client sending `X-OpenAI-Session` or `openai/session` also needs an initial `js_reset` for a missing context; simply reconnecting is not an implicit reset. Heartbeat requests maintain only the transport, not the JavaScript runtime.
+
 ## Security notes
 
 - A holder of the remote credential can operate the logged-in desktop with existing LCU permissions; this is not a per-app sandbox.

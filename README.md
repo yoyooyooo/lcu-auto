@@ -97,6 +97,8 @@ lcu-auto service status
 
 Installation does not start the service. Stop an existing foreground server before starting the managed service. `stop` and `restart` refuse to disconnect clients unless you explicitly pass `--force-disconnect`. Installation points to the current installed CLI; reinstall the definition after moving the installation. [Service management](docs/services.md) explains platform limitations and recovery.
 
+The broker retains healthy MCP client connections but retires expensive desktop execution after 10 minutes without a completed tool call. Pings and tool discovery do not keep the JavaScript REPL alive. When a previously used context expires, `js` returns `LCU_CONTEXT_RESET_REQUIRED` without executing your code; call `js_reset`, select the app again and observe its current UI before input. Clients using `X-OpenAI-Session` or `openai/session` must call `js_reset` **before their first `js`** when the context is not yet initialized. A new stateful MCP transport can still issue its first `js` directly. [Lifecycle details](docs/design.md).
+
 ### Remote access
 
 For private Tailscale networks, use **Tailscale Serve (tailnet-only HTTPS)** with a separate bearer credential. The broker still binds to loopback and Cloudflare Access remains independent:

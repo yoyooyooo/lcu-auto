@@ -88,6 +88,38 @@ async function run(c: Client, code: string, conversation?: string) {
   if (!first || first.type !== "text") throw new Error("Missing fixture text");
   return JSON.parse(first.text);
 }
+async function coldReset(c: Client, conversation?: string) {
+  const response = CallToolResultSchema.parse(
+    await c.callTool({
+      name: "js_reset",
+      arguments: {},
+      ...(conversation === undefined ? {} : { _meta: { "openai/session": conversation } }),
+    }),
+  );
+  expect(response.isError).not.toBe(true);
+}
+
+test("a cold correlated js requires explicit reset without starting the user's code", async () => {
+  const f = await setup();
+  try {
+    const peer = await f.connect("fresh-correlated");
+    try {
+      await expect(run(peer.client, "set", "fresh-correlated")).rejects.toThrow(
+        "LCU_CONTEXT_RESET_REQUIRED",
+      );
+      expect(f.http.contextCount).toBe(0);
+      await coldReset(peer.client, "fresh-correlated");
+      expect(f.http.contextCount).toBe(1);
+      expect(f.created).toBe(2); // one schema probe, one cold reset runtime
+      await run(peer.client, "set", "fresh-correlated");
+      expect((await run(peer.client, "get", "fresh-correlated")).memory).toBe(42);
+    } finally {
+      await peer.close();
+    }
+  } finally {
+    await f.http.close();
+  }
+}, 30_000);
 
 test("32 parallel ChatGPT discoveries use one temporary schema probe and no execution slots", async () => {
   const f = await setup({ limit: 1 });
@@ -121,6 +153,7 @@ test("12 fresh ChatGPT connections in one conversation retain REPL and native co
       const peer = await f.connect("same-conversation");
       try {
         if (n === 0) {
+          await coldReset(peer.client, "same-conversation");
           await run(peer.client, "set", "same-conversation");
           await run(peer.client, "observe", "same-conversation");
         } else {
@@ -139,7 +172,9 @@ test("12 fresh ChatGPT connections in one conversation retain REPL and native co
       .split("\n")
       .map((line) => JSON.parse(line));
     const ids = new Set(
-      events.filter((e) => e.event === "call").map((e) => e.meta["x-codex-turn-metadata"].turn_id),
+      events
+        .filter((e) => e.event === "call" && e.code !== undefined)
+        .map((e) => e.meta["x-codex-turn-metadata"].turn_id),
     );
     expect(ids.size).toBe(1);
     expect(events.filter((e) => e.event === "turn_ended")).toHaveLength(0);
@@ -157,6 +192,7 @@ test("metadata-only correlation survives unrelated transport closure", async () 
   const f = await setup();
   try {
     const first = await f.connect();
+    await coldReset(first.client, "metadata-only");
     await run(first.client, "set", "metadata-only");
     await first.close();
     expect(f.http.sessionCount).toBe(0);
@@ -177,6 +213,7 @@ test("same-conversation reconnect stays closed until explicit reset replaces a d
   try {
     const first = await f.connect("reinstalled-runtime");
     try {
+      await coldReset(first.client);
       await run(first.client, "set");
       const interrupted = CallToolResultSchema.parse(
         await first.client.callTool({ name: "js", arguments: { code: "disconnect" } }),
@@ -219,6 +256,7 @@ test("same-conversation reconnect stays closed until explicit reset replaces a d
 test("different conversations and authenticated owners never share execution state", async () => {
   const f = await setup();
   try {
+    const initialized = new Set<string>();
     for (const [conversation, owner, expected] of [
       ["a", "owner-a", 0],
       ["b", "owner-a", 0],
@@ -227,6 +265,11 @@ test("different conversations and authenticated owners never share execution sta
     ] as const) {
       const peer = await f.connect(conversation, owner);
       try {
+        const identity = `${owner}:${conversation}`;
+        if (!initialized.has(identity)) {
+          await coldReset(peer.client, conversation);
+          initialized.add(identity);
+        }
         expect((await run(peer.client, "get", conversation)).memory).toBe(expected);
         await run(peer.client, "set", conversation);
       } finally {
@@ -245,9 +288,10 @@ test("context capacity rejects new work but preserves existing conversation and 
     const a = await f.connect("a");
     const b = await f.connect("b");
     try {
+      await coldReset(a.client);
       await run(a.client, "set", "a");
       expect((await b.client.listTools()).tools.length).toBe(2);
-      await expect(run(b.client, "set", "b")).rejects.toThrow();
+      await expect(coldReset(b.client)).rejects.toThrow();
       expect((await run(a.client, "get", "a")).memory).toBe(42);
       expect(f.created).toBe(2);
     } finally {
@@ -264,6 +308,7 @@ test("task-like fresh transports reclaim idle transport contexts without evictin
   const persistent = await f.connect("persistent-conversation");
   const transient: Awaited<ReturnType<typeof f.connect>>[] = [];
   try {
+    await coldReset(persistent.client);
     await run(persistent.client, "set", "persistent-conversation");
     for (let i = 0; i < 20; i++) {
       // ChatGPT Tasks can issue a new stateful transport for every tool call,
@@ -274,7 +319,8 @@ test("task-like fresh transports reclaim idle transport contexts without evictin
       expect(f.http.contextCount).toBeLessThanOrEqual(2);
     }
     expect((await run(persistent.client, "get", "persistent-conversation")).memory).toBe(42);
-    await expect(run(transient[0]!.client, "get")).rejects.toThrow();
+    await expect(run(transient[0]!.client, "get")).rejects.toThrow("LCU_CONTEXT_RESET_REQUIRED");
+    expect(f.http.sessionCount).toBeGreaterThan(0); // capacity reclaim retained transports
     expect(f.http.contextCount).toBe(2);
   } finally {
     await Promise.allSettled(transient.map((peer) => peer.close()));
@@ -326,6 +372,7 @@ test("conversation contexts expire after inactivity, not after one HTTP client c
   const f = await setup({ idleMs: 150 });
   try {
     const peer = await f.connect("idle");
+    await coldReset(peer.client);
     await run(peer.client, "observe", "idle");
     await peer.close();
     expect(f.http.contextCount).toBe(1);
@@ -346,6 +393,7 @@ test("in-flight conversation work cannot be evicted by the idle timer", async ()
   const peer = await f.connect("active");
   const abort = new AbortController();
   try {
+    await coldReset(peer.client);
     const pending = peer.client.callTool(
       { name: "js", arguments: { code: "slow" }, _meta: { "openai/session": "active" } },
       undefined,

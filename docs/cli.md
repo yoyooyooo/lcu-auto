@@ -53,6 +53,10 @@ All service commands accept `--name` (default `lcu-auto`). Installation also acc
 
 Service management does not install or control `cloudflared`.
 
+The authenticated `/healthz` and `service status` output separates `transports`, `executionContexts`, `activeCalls`, `idleExecutionContexts`, `closingExecutionContexts`, `quarantinedExecutionContexts`, `quarantinedDiscoveryProbes` and `oldestExecutionIdleMs`. It reports the running Broker `version`, which may differ from the CLI installed on disk. The historical `sessions` field is retained as the sum of transports and execution slots; it is not a count of tasks or people. A missing field from an older Broker is reported as `null` by the CLI, not zero.
+
+After a shared Broker's execution context expires, the MCP `js` result includes `LCU_CONTEXT_RESET_REQUIRED`; no submitted user JavaScript ran. Call `js_reset` first, then reacquire and observe the app before input. A correlation-aware HTTP client must explicitly initialize its missing execution context with `js_reset` even on its first call. An independent stdio `mcp` session is unchanged.
+
 ## Migration aliases
 
 `connect` means `mcp --url http://127.0.0.1:8789/mcp`; `stdio` means `mcp`; `http` means `serve`. A supplied `connect --url` is retained. Aliases are retained throughout the 0.4 minor line and may be removed only in a documented later minor release.

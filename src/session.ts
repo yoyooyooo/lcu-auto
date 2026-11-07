@@ -39,6 +39,13 @@ export class DesktopQueue {
   }
 }
 
+/** A failed cleanup must retain its execution slot, even when startup failed. */
+export class UpstreamTeardownUnconfirmedError extends Error {
+  constructor() {
+    super("LCU upstream teardown was not confirmed; this execution slot is quarantined.");
+  }
+}
+
 const errorResult = (message: string): CallToolResult => ({
   isError: true,
   content: [{ type: "text", text: message }],
@@ -48,19 +55,19 @@ export async function createExecution(
   factory: () => Upstream,
   queue: DesktopQueue,
   audit: Audit = stderrAudit,
+  options: { coldReset?: boolean } = {},
 ) {
   let upstream = factory();
-  try {
-    await upstream.connect();
-  } catch (error) {
-    await upstream.close().catch(() => {});
-    throw error;
-  }
   let surface: ReturnType<typeof publicSurface>;
   try {
+    await upstream.connect();
     surface = publicSurface(upstream);
   } catch (error) {
-    await upstream.close();
+    try {
+      await upstream.close();
+    } catch {
+      throw new UpstreamTeardownUnconfirmedError();
+    }
     throw error;
   }
   let sessionId = randomUUID();
@@ -74,6 +81,7 @@ export async function createExecution(
   const stop = new AbortController();
   const running = new Set<Promise<CallToolResult>>();
   let state: "open" | "broken" | "closing" | "closed" = "open";
+  let coldReset = options.coldReset === true;
   let closing: Promise<void> | undefined;
   let touched = Date.now();
   // This is the adapter's control turn, not a guessed host conversation turn.
@@ -104,6 +112,42 @@ export async function createExecution(
     context: { requestId: string | number; signal: AbortSignal },
     signal: AbortSignal,
   ): Promise<CallToolResult> {
+    // A reset for a missing/expired logical context starts one generation only.
+    // A retained context's explicit reset must still replace its existing runtime.
+    if (coldReset) {
+      coldReset = false;
+      try {
+        const result = toolResult(
+          await upstream.call("js_reset", args, {
+            sessionId,
+            turnId: randomUUID(),
+            toolCallId: String(context.requestId),
+            signal,
+          }),
+        );
+        signal.throwIfAborted();
+        if (result.isError) {
+          state = "broken";
+          await closeUpstream();
+          return result;
+        }
+        audit("runtime_initialized_after_expiry");
+        return {
+          ...result,
+          content: [
+            ...result.content,
+            {
+              type: "text",
+              text: "A new LCU runtime was initialized. Previous JavaScript bindings are gone. Reacquire the app and observe the current UI before any input. No earlier action was replayed.",
+            },
+          ],
+        };
+      } catch (error) {
+        state = "broken";
+        await closeUpstream().catch(() => audit("upstream_close_failed"));
+        throw error;
+      }
+    }
     const recovering = state === "broken";
     let cleanupFailed = false;
     try {
@@ -246,11 +290,18 @@ export async function createExecution(
         await Promise.allSettled(running);
         try {
           await queue.cleanup(async () => {
+            let turnNotificationFailed = false;
             try {
               await endControlTurn(hadInFlightCalls ? "Interrupt" : "Stop");
-            } finally {
-              await closeUpstream();
+            } catch {
+              turnNotificationFailed = true;
             }
+            // The turn notification may fail after the host process is gone.
+            // Confirmed process closure is sufficient to free the owned slot;
+            // an unconfirmed close still throws and must quarantine the slot.
+            await closeUpstream();
+            if (turnNotificationFailed)
+              audit("control_turn_notification_failed_after_confirmed_close");
           });
         } finally {
           state = "closed";
@@ -278,6 +329,9 @@ export function createMcpServer(surface: Surface, call: ToolCall, audit: Audit =
           "Native-app consent is handled locally.",
           "JavaScript REPL bindings and the Computer Use control turn persist only within the same logical execution context.",
           "With a stable X-OpenAI-Session header or openai/session metadata, short-lived HTTP clients can share a context under the same authenticated principal.",
+          "For correlated HTTP clients, a missing execution context requires an explicit js_reset before the first js or after idle expiry.",
+          "A retained stateful HTTP transport remains connected while its idle execution runtime may be reclaimed; the next js then returns LCU_CONTEXT_RESET_REQUIRED without running code.",
+          "On LCU_CONTEXT_RESET_REQUIRED call js_reset, reacquire the app and observe the current UI. Do not automatically replay any earlier desktop action.",
           "Without a stable correlation identifier, each new MCP transport may use a fresh runtime; scheduled or background ChatGPT tasks may have this behavior.",
           "Do not assume JavaScript variables, app bindings or accessibility element indices survive separate js tool calls in that mode.",
           "Follow upstream LCU's first-call setup instructions; when continuing without confirmed context reuse, reacquire the target using cua.getApp(...) and observe its current UI state before acting within that js call.",

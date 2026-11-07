@@ -21,9 +21,33 @@ type Manifest = typeof Manifest.Type;
 const Health = Schema.Struct({
   ok: Schema.Boolean,
   sessions: Schema.Number,
+  version: Schema.optionalKey(Schema.String),
+  transports: Schema.optionalKey(Schema.Number),
+  connectedTransports: Schema.optionalKey(Schema.Number),
+  executionContexts: Schema.optionalKey(Schema.Number),
   activeCalls: Schema.optionalKey(Schema.Number),
   pendingRequests: Schema.optionalKey(Schema.Number),
+  idleExecutionContexts: Schema.optionalKey(Schema.Number),
+  closingExecutionContexts: Schema.optionalKey(Schema.Number),
+  quarantinedExecutionContexts: Schema.optionalKey(Schema.Number),
+  quarantinedDiscoveryProbes: Schema.optionalKey(Schema.Number),
+  oldestExecutionIdleMs: Schema.optionalKey(Schema.Union([Schema.Number, Schema.Null])),
 });
+const offlineHealth = {
+  ok: false,
+  sessions: null,
+  version: null,
+  transports: null,
+  connectedTransports: null,
+  executionContexts: null,
+  activeCalls: null,
+  pendingRequests: null,
+  idleExecutionContexts: null,
+  closingExecutionContexts: null,
+  quarantinedExecutionContexts: null,
+  quarantinedDiscoveryProbes: null,
+  oldestExecutionIdleMs: null,
+};
 
 function execute(argv: readonly string[]) {
   return Effect.scoped(
@@ -69,7 +93,22 @@ function health(manifest: Manifest) {
       ),
     );
     if (response.status !== 200) return yield* Effect.fail(new Error("Broker is unavailable"));
-    return yield* response.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Health)));
+    const value = yield* response.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Health)));
+    return {
+      ...offlineHealth,
+      ...value,
+      version: value.version ?? null,
+      transports: value.transports ?? null,
+      connectedTransports: value.connectedTransports ?? null,
+      executionContexts: value.executionContexts ?? null,
+      activeCalls: value.activeCalls ?? null,
+      pendingRequests: value.pendingRequests ?? null,
+      idleExecutionContexts: value.idleExecutionContexts ?? null,
+      closingExecutionContexts: value.closingExecutionContexts ?? null,
+      quarantinedExecutionContexts: value.quarantinedExecutionContexts ?? null,
+      quarantinedDiscoveryProbes: value.quarantinedDiscoveryProbes ?? null,
+      oldestExecutionIdleMs: value.oldestExecutionIdleMs ?? null,
+    };
   }).pipe(Effect.timeout("4 seconds"), Effect.provide(FetchHttpClient.layer));
 }
 export const serviceStatus = (name: string) =>
@@ -78,9 +117,7 @@ export const serviceStatus = (name: string) =>
     const status = yield* execute(manifest.status).pipe(
       Effect.catch(() => Effect.succeed({ code: 1, output: "" })),
     );
-    const broker = yield* health(manifest).pipe(
-      Effect.catch(() => Effect.succeed({ ok: false, sessions: 0 })),
-    );
+    const broker = yield* health(manifest).pipe(Effect.catch(() => Effect.succeed(offlineHealth)));
     return {
       name,
       registered: status.code === 0,
@@ -221,9 +258,17 @@ export const controlService = (
       );
       if (status.code === 0) {
         const broker = yield* health(manifest).pipe(
-          Effect.catch(() => Effect.succeed({ ok: false, sessions: 0 })),
+          Effect.catch(() => Effect.succeed(offlineHealth)),
         );
-        if (!force && (!broker.ok || broker.sessions > 0))
+        if (
+          !force &&
+          (!broker.ok ||
+            (broker.sessions ?? 0) > 0 ||
+            (broker.activeCalls ?? 0) > 0 ||
+            (broker.pendingRequests ?? 0) > 0 ||
+            (broker.quarantinedExecutionContexts ?? 0) > 0 ||
+            (broker.quarantinedDiscoveryProbes ?? 0) > 0)
+        )
           return yield* Effect.fail(
             new Error(
               "Broker has connected clients or cannot report them; close clients first or explicitly use --force-disconnect",
@@ -249,7 +294,7 @@ export const controlService = (
     }
     if (action !== "stop") {
       const before = yield* health(manifest).pipe(
-        Effect.catch(() => Effect.succeed({ ok: false, sessions: 0 })),
+        Effect.catch(() => Effect.succeed(offlineHealth)),
       );
       if (!before.ok) {
         const result = yield* execute(manifest.start);
@@ -261,7 +306,7 @@ export const controlService = (
       let ready = false;
       for (let attempt = 0; attempt < 30; attempt++) {
         const current = yield* health(manifest).pipe(
-          Effect.catch(() => Effect.succeed({ ok: false, sessions: 0 })),
+          Effect.catch(() => Effect.succeed(offlineHealth)),
         );
         if (current.ok) {
           ready = true;
