@@ -97,6 +97,8 @@ lcu-auto service status
 
 安装不会立即启动。先停止已有前台 server，再启动受管服务。有客户端时，`stop` 和 `restart` 默认拒绝断开，除非显式使用 `--force-disconnect`。服务定义指向当前安装的 CLI；移动安装位置后需要重新安装定义。[服务管理文档](docs/services.md)说明平台限制与恢复方式。
 
+Broker 保留仍然健康的 MCP 客户端连接，但真实桌面执行状态在工具调用结束后闲置 10 分钟就会清理。心跳与工具发现不会给 JavaScript REPL 续命。曾使用的上下文过期后，`js` 会返回 `LCU_CONTEXT_RESET_REQUIRED`，且不会运行提交的代码；应先调用 `js_reset`，重新选择应用并观察当前界面。使用 `X-OpenAI-Session` 或 `openai/session` 的客户端，在尚未初始化执行上下文时也必须先调用 `js_reset`；新建的普通有状态 Transport 仍可直接首次调用 `js`。详见[生命周期设计](docs/design.md)。
+
 ### 远程访问
 
 对于私有 Tailscale 网络，可以用 **Tailscale Serve（仅 Tailnet 可访问的 HTTPS）** 和独立的远程 Bearer Token。Broker 继续只监听本机 loopback，Cloudflare Access 认证保持独立：

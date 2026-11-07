@@ -264,7 +264,10 @@ test("idle HTTP sessions expire and capacity retires idle transport sessions", a
     expect(f.http.contextCount).toBe(1);
     await invoke(b.client, "set");
     expect(f.http.contextCount).toBe(1);
-    await expect(invoke(a.client, "get")).rejects.toThrow();
+    const retired = await invoke(a.client, "get");
+    expect(retired.isError).toBe(true);
+    expect(firstText(retired)).toContain("LCU_CONTEXT_RESET_REQUIRED");
+    expect(f.http.sessionCount).toBe(2); // only execution capacity was reclaimed
     expect(JSON.parse(firstText(await invoke(b.client, "get"))).memory).toBe(42);
     await new Promise((resolve) => setTimeout(resolve, 350));
     expect(f.http.sessionCount).toBe(0);
