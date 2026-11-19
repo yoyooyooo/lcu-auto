@@ -26,6 +26,43 @@ function firstText(result: Awaited<ReturnType<typeof invoke>>) {
   if (!item || item.type !== "text") throw new Error("Expected text result");
   return item.text;
 }
+async function expectPolicyDenialPreserved({
+  client: c,
+  trace,
+}: {
+  client: Client;
+  trace: string;
+}) {
+  await invoke(c, "set");
+  const before = await readFile(trace, "utf8");
+  expect(await invoke(c, "policy-denial")).toEqual({
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: "Synthetic policy denied the fixture target. Stop this fixture operation.",
+      },
+    ],
+    structuredContent: {
+      error_code: "FIXTURE_POLICY_DENIED",
+      target: "https://restricted.example/fixture",
+      reason: "fixture_rule",
+    },
+    _meta: { "fixture/policy": { source: "deterministic-upstream", retryable: false } },
+    fixtureExtension: { decision: "deny", version: 1 },
+  });
+  expect(JSON.parse(firstText(await invoke(c, "get")))).toEqual({ memory: 42 });
+  const events = (await readFile(trace, "utf8"))
+    .slice(before.length)
+    .trim()
+    .split("\n")
+    .map((line): unknown => JSON.parse(line));
+  // Exactly one denial and our explicit readback: no retry, reset, cleanup or replay.
+  expect(events).toEqual([
+    expect.objectContaining({ event: "call", tool: "js", code: "policy-denial" }),
+    expect.objectContaining({ event: "call", tool: "js", code: "get" }),
+  ]);
+}
 async function fixtureHttp(options: { idleMs?: number; maxSessions?: number } = {}) {
   const directory = await scratch();
   const trace = resolve(directory, "trace.jsonl");
@@ -112,6 +149,7 @@ test("real stdio MCP with a deterministic upstream, client without elicitation",
       isError: true,
       content: [{ type: "text", text: "original tool error" }],
     });
+    await expectPolicyDenialPreserved({ client: c, trace });
     const events = (await readFile(trace, "utf8"))
       .trim()
       .split("\n")
@@ -130,6 +168,16 @@ test("real stdio MCP with a deterministic upstream, client without elicitation",
     ).toBe(true);
   } finally {
     await c.close();
+  }
+}, 30_000);
+
+test("HTTP preserves upstream policy denials without replaying or resetting", async () => {
+  const f = await fixtureHttp();
+  try {
+    const peer = await f.connect();
+    await expectPolicyDenialPreserved({ client: peer.client, trace: f.trace });
+  } finally {
+    await f.close();
   }
 }, 30_000);
 
