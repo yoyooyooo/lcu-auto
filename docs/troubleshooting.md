@@ -12,6 +12,30 @@ Observe the target through the documented `cua.getApp(...)` or `app.getAXState()
 
 A normal successful call within the _same execution context_ should not invalidate the next call's app binding. However, a new MCP transport with no stable conversation identifier gets its own runtime. If `finder is not defined` (or another lost JavaScript variable) appears in a scheduled/background task, first distinguish a new context from a broken upstream Runtime; do not assume the previous binding exists. Follow upstream first-call setup, then reacquire the app in each subsequent `js` call, observe the current UI and batch related actions when safe. If the last action might have happened, observe before retrying. Report the client type and sanitized lifecycle metadata if bindings vanish **within a confirmed reused context**. Do not attach private window text or screenshots to a public issue.
 
+## Upstream denies the current browser URL
+
+An error such as `Computer Use is not allowed on the current browser URL` is an upstream desktop-policy refusal. LCU Auto forwards the upstream tool result; it does not maintain a URL denylist for native browser control. Follow any instruction in that result to stop operating the target.
+
+The message alone does not identify the deciding module, the matched rule, or whether the browser is on the original URL or a redirect. It does not establish that the website is unavailable or that its entire domain is blocked. A generic `INVALID_ARGUMENT` error code also does not identify the policy owner.
+
+Keep these independent layers separate:
+
+| Layer                              | What it controls                                                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Broker bearer/OAuth authentication | Whether a client may invoke this MCP server. Authentication failures are diagnosed separately from a returned desktop tool error.                                           |
+| Native-app consent and `--scope`   | Whether a recognized request may grant control of an application, and how long that grant persists.                                                                         |
+| Operating-system permissions       | Screen Recording, Accessibility and other permissions required by the desktop runtime.                                                                                      |
+| `--chrome` and `--allow-origin`    | The opt-in upstream browser-extension path and its exact-origin approval requests. These flags do not override policy for a native browser selected with `cua.getApp(...)`. |
+| Upstream page policy               | Whether the runtime permits Computer Use on the current browser page. LCU Auto preserves this decision.                                                                     |
+
+Reauthorizing the MCP client or granting app consent again does not override a page-policy refusal. `js_reset` replaces execution state; it does not grant access to a prohibited page. Do not automatically retry, reset, switch control paths or weaken guards in response to an explicit refusal.
+
+For diagnosis, record the LCU Auto version, installed LCU/desktop-app version and whether the call used native-app or browser-extension control. Use `lcu-auto --version`, `lcu-auto doctor --json` and the installed runtime's version information. These checks identify software and adapter availability; they do not prove desktop access.
+
+The broker's `operation_finished` event reports `error` and `interrupted`. An error without interruption means the upstream call returned an error result; it is not proof of a particular URL rule. Production logs intentionally omit tool bodies, full URLs and screenshots. Keep any original result needed for a private investigation separate from public reports, and redact user data. Use a synthetic upstream fixture to test result preservation and absence of automatic retries without accessing a restricted page.
+
+The adapter boundary is in [`src/lcu.ts`](https://github.com/yoyooyooo/lcu-auto/blob/5c4f9092d5abf80f5c5e238f9d24fde231659be5/src/lcu.ts), and execution/return handling is in [`src/session.ts`](https://github.com/yoyooyooo/lcu-auto/blob/5c4f9092d5abf80f5c5e238f9d24fde231659be5/src/session.ts). Follow the installed upstream runtime's source or supported diagnostics to locate its policy decision. If that evidence is unavailable, report the decision layer as unresolved instead of assigning it to a guessed domain rule.
+
 ## Too many contexts or lost bindings
 
 Discovery and HTTP transports have different limits from execution contexts. Repeated ChatGPT connections in one conversation should share one context. If a client sends inconsistent conversation IDs, the broker rejects the mismatch instead of mixing state.

@@ -124,6 +124,8 @@ tailscale serve --bg --https=9443 8789
 
 上下文关闭或损坏时，显式调用 `js_reset`：它会关闭并重建当前上下文的 LCU 进程，不重放以前的动作；即使 HTTP 重连仍指向坏上下文，也可以恢复。重装桌面应用后也可用它刷新 Runtime，但它不会授予操作系统权限。详见[恢复步骤](docs/troubleshooting.md#session-is-closed-even-after-reconnecting-or-reinstalling-the-desktop-app)。
 
+针对当前浏览器 URL 的拒绝来自上游 Runtime。App 授权、Broker 重新认证和 Runtime 重置都不能覆盖这项策略。仅凭报错不能确定被限制的域名，也不能区分最初请求的 URL 与跳转后的页面。遵循上游的停止指令，并按[浏览器 URL 拒绝排查](docs/troubleshooting.md#upstream-denies-the-current-browser-url)区分页面策略、认证与会话故障。
+
 队列只串行化单次调用，不把整个多步任务变成事务。不要让两个 Agent 同时修改一个窗口。截图和可访问性文本可能包含隐私，会返回给 MCP 客户端。本包不发送遥测，生产日志不保存工具结果；上游 LCU 和客户端有各自的行为与条款。
 
 默认 `--scope always` 可能在上游保存持久 App 授权。`--scope session` 或 `--scope once` 限制新请求的最长授权范围，不撤销旧授权。浏览器扩展接口需要显式开启并逐个给出完整站点 origin。详见[安全模型](docs/security-model.md)。

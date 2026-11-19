@@ -33,7 +33,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     return text({ ended: true });
   }
   const code = args.code;
-  record({ event: "call", code, meta: request.params._meta });
+  record({ event: "call", tool: request.params.name, code, meta: request.params._meta });
   if (request.params.name === "js_reset") {
     memory = 0;
     activeTurns.clear();
@@ -79,6 +79,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   if (code === "disconnect") process.exit(0);
   if (code === "error")
     return { isError: true, content: [{ type: "text", text: "original tool error" }] };
+  if (code === "policy-denial")
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: "Synthetic policy denied the fixture target. Stop this fixture operation.",
+        },
+      ],
+      structuredContent: {
+        error_code: "FIXTURE_POLICY_DENIED",
+        target: "https://restricted.example/fixture",
+        reason: "fixture_rule",
+      },
+      _meta: { "fixture/policy": { source: "deterministic-upstream", retryable: false } },
+      fixtureExtension: { decision: "deny", version: 1 },
+    };
   if (code === "image")
     return {
       content: [

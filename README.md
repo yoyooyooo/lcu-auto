@@ -124,6 +124,8 @@ Discovery does not reserve an execution runtime. Idle runtimes are bounded and r
 
 If a context becomes closed or broken, explicitly call `js_reset`: it replaces the owned LCU process without replaying previous actions, even when an HTTP reconnect still points to the failed context. This also refreshes runtime state after reinstalling the desktop app. It does not grant OS permissions. See [recovery](docs/troubleshooting.md#session-is-closed-even-after-reconnecting-or-reinstalling-the-desktop-app).
 
+A refusal concerning the current browser URL comes from the upstream runtime. App consent, broker reauthorization and runtime reset do not override that policy. The message alone does not identify a blocked domain or distinguish the requested URL from a redirect. Follow the upstream stop instruction and use the [browser URL refusal guide](docs/troubleshooting.md#upstream-denies-the-current-browser-url) to distinguish it from authentication and session failures.
+
 The queue serializes individual calls, not an entire multi-step task. Avoid two agents editing the same window. Screenshots and accessibility text can contain private information and are returned to your MCP client. The package does not send telemetry or retain tool results in its production logs. LCU and your client have their own behavior and terms.
 
 The default `--scope always` can persist app grants in upstream LCU. `--scope session` or `--scope once` reduces the maximum requested persistence but does not revoke old grants. Browser-extension access is opt-in and requires exact site origins. See the [security model](docs/security-model.md).
