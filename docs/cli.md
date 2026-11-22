@@ -23,7 +23,7 @@ The parser and generated help use `effect/cli`. Runtime errors return a nonzero 
 
 `--lcu-command` replaces only the executable. The installed LCU shared adapter is still loaded from `--lcu-dir`; use a compatible trusted installation. No arbitrary downloaded code is installed automatically.
 
-`mcp --url` only accepts an HTTP loopback `/mcp` URL without credentials, query or fragment. Use an OAuth-capable MCP client directly for a remote server. When `--url` is used, runtime flags do not reconfigure the already running broker; configure those flags on `serve` instead.
+`mcp --url` only accepts an HTTP loopback `/mcp` URL without credentials, query or fragment. Connect a remote Streamable HTTP MCP client directly to the configured endpoint. Use [Cloudflare Managed OAuth](deployment.md) or [Tailnet access with a separate bearer credential](tailnet.md), as configured on the broker. When `--url` is used, runtime flags do not reconfigure the already running broker; configure those flags on `serve` instead.
 
 `serve` additionally accepts `--port` (1–65535, default 8789), repeated `--public-origin` (HTTPS origins), and `--access-config` (JSON file). A public origin validates Host/Origin; it is not an authentication rule.
 
@@ -55,6 +55,6 @@ Service management does not install or control `cloudflared`.
 
 ## Migration aliases
 
-`connect` means `mcp --url http://127.0.0.1:8789/mcp`; `stdio` means `mcp`; `http` means `serve`. A supplied `connect --url` is retained. Aliases are retained throughout the 0.4 minor line and may be removed only in a documented later minor release.
+`connect` means `mcp --url http://127.0.0.1:8789/mcp`; `stdio` means `mcp`; `http` means `serve`. A supplied `connect --url` is retained. The current CLI still accepts these aliases. Use `mcp` and `serve` in new configurations.
 
 See [troubleshooting](troubleshooting.md) for recovery and [security](security-model.md) before exposing a remote endpoint.

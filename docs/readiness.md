@@ -1,6 +1,6 @@
-# Public-release verification
+# Release gates and historical evidence
 
-This record separates implementation, automated checks, live desktop behavior and publication. It is not a claim that every upstream platform is supported.
+Use the [contribution guide](../CONTRIBUTING.md) to choose development checks and [release operations](releases.md) to prepare a release. For a specific version, look up its tag and artifact in [GitHub Releases](https://github.com/yoyooyooo/lcu-auto/releases) and read the checks for that exact commit in [GitHub Actions](https://github.com/yoyooyooo/lcu-auto/actions). Use [Compatibility](compatibility.md) for current platform claims. A passed package check is not a live desktop test.
 
 ## Release gates
 
@@ -14,9 +14,13 @@ This record separates implementation, automated checks, live desktop behavior an
 | Security               | JWT validation, private local credentials, verified-owner context binding, body/connection limits, no hidden retries or telemetry.       |
 | Release automation     | Immutable exact-version tag, audited public artifact, official-registry integrity readback, OIDC/provenance for subsequent CI publishes. |
 
-`bun run check` runs the source gates. `bun run pack:check` verifies the actual tarball and installs it into a fresh consumer directory. GitHub workflow results are the authority for the configured OS matrix; a locally generated service definition is not a live Windows/Linux installation test.
+Audit production and development dependencies separately. Resolve or explicitly document high-severity findings before release.
 
-## Live verification boundary
+## Historical verification
+
+The records below describe the initial public release path. Their results apply to the cited runs and versions, not to later builds.
+
+### Initial live baseline and source candidates
 
 The development baseline has exercised the real LCU 0.11.4 shared client on Apple Silicon macOS. Previous end-to-end checks included multiple independent MCP calls, Unicode paste, saved-file byte comparison, returned screenshots, reset and cleanup. Actual ChatGPT short-lived tool clients have retained one logical runtime across more than eight calls.
 
@@ -24,20 +28,12 @@ The 0.4.0 source candidate passed 36 local automated tests and 261 assertions, N
 
 The 0.4.1 release candidate passed 46 hermetic automated tests and 359 assertions, typecheck, lint, formatter, Node build and 68 documentation links/anchors on macOS. The verified `bun pm pack` archive includes 37 allowlisted files, excludes development artifacts and installs into an empty npm consumer directory; its CLI and bin both report 0.4.1. `bun audit` reported zero known vulnerabilities across 151 dependencies on the review date (2026-11-03). GitHub Actions had passed on the previous `main` commit; the release commit, official npm registry publication, provenance and GitHub Release are separate verification claims and must be read back after publication.
 
-## Published bootstrap evidence (2026-11-03)
+### Published bootstrap evidence (2026-11-03)
 
 The public `v0.4.1` annotated tag targets commit `a2d9f66b6df5b8e734354dc5500e5a46d6de2fcd`. The official npm registry returned `lcu-auto@0.4.1` as `latest`, with SHA-512 integrity matching the locally verified archive. An independent consumer installed the registry version into an empty directory and both the npm-linked bin and Node entrypoint reported `v0.4.1`. The [tag publish workflow](https://github.com/yoyooyooo/lcu-auto/actions/runs/41665869987) completed its package verification and GitHub Release jobs successfully; the [GitHub Release](https://github.com/yoyooyooo/lcu-auto/releases/tag/v0.4.1) includes an archive whose SHA-256 matches the verified tarball. This bootstrap was an interactive maintainer-local npm publish and deliberately has **no CI provenance**.
 
-## Trusted Publishing evidence (2026-11-03)
+### Trusted Publishing evidence (2026-11-03)
 
 The immutable `v0.4.2` tag targets commit `f1366ed0b671c94b00e4fef8e33b61e81a271969`. The [tag workflow](https://github.com/yoyooyooo/lcu-auto/actions/runs/41667478119) successfully used GitHub Actions OIDC to publish `lcu-auto@0.4.2` with npm provenance. Its first attempt failed _after npm accepted the version_, because the registry-installed consumer briefly received `ETARGET`. The failed-job rerun recognized the existing version, verified the packed bytes, ran clean npm installation and signature/provenance checks, and then created the [v0.4.2 GitHub Release](https://github.com/yoyooyooo/lcu-auto/releases/tag/v0.4.2). Both workflow jobs completed successfully, and the Release asset SHA-256 matches the verified tarball (`207fb0fb1d4d3a9a76ec2df1ba0e0a2cbeefe53e52107aa4cd3e031ad08e2972`).
 
 The official registry's `latest` tag read back as `0.4.2`; an independent clean install ran `lcu-auto v0.4.2`, and `npm audit signatures` verified package signatures and attestations. The post-tag maintenance change on `main` adds bounded retry handling for this observed propagation window; that maintenance code is **not part of the immutable v0.4.2 tag**. This establishes the OIDC release path but does not claim ongoing external uptime or live desktop support beyond the documented macOS baseline.
-
-## Not claimed
-
-Linux desktop execution, Windows desktop-engine support, non-macOS service installation, sleep/reboot recovery and extended multi-agent operation are not established by the hermetic suite. A successful npm publish does not prove OAuth login/refresh for every client or network.
-
-Production and development dependency audits are reviewed separately. High-severity findings must be resolved or explicitly documented before release; a successful install is not a security audit.
-
-[Compatibility](compatibility.md) · [Release operations](releases.md) · [Contributing](../CONTRIBUTING.md)

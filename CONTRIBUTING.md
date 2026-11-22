@@ -8,7 +8,9 @@ bun run check
 bun run pack:check
 ```
 
-The default suite is hermetic: it uses real MCP SDK transports with a deterministic upstream fixture, without an installed LCU, private home directory, GUI, cloud account or credential. This is protocol proof, not proof of upstream desktop behavior.
+`bun run check` includes the hermetic protocol suite. It uses real MCP SDK transports with a deterministic upstream fixture, without an installed LCU, private home directory, GUI, cloud account, or credential. `bun run pack:check` builds and checks the tarball, installs it in a clean consumer directory, and runs CLI smoke checks. Neither command proves that the upstream desktop engine works on a given host.
+
+For a documentation-only review, `bun run docs:check` checks relative links, anchors, and the two README entrypoints without building or running product tests. `bun run privacy:check` checks the public tree for likely accidental disclosures. Neither check replaces the distribution gates for a release.
 
 For an explicitly authorized live macOS test, install upstream LCU and run `bun run smoke:live`. The script builds a task-owned AppKit fixture, uses only that window, verifies saved bytes, and keeps evidence in ignored `.runs/`. It may persist approval for the fixture under the chosen consent policy. Never substitute a real conversation or valuable document for that fixture.
 

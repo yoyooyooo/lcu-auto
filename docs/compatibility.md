@@ -17,6 +17,6 @@ The [upstream requirements](https://github.com/amontlabs/lcu#requirements) are a
 
 macOS user-service installation is exercised locally. Linux/systemd and Windows Task Scheduler definitions have deterministic rendering/quoting tests; actual user-session installation requires platform-specific acceptance. Headless runners do not prove graphical-session permissions.
 
-CI covers CLI, protocol and package behavior on macOS, Linux and Windows, with Node 22 and 24 where configured. A workflow definition is not evidence that a particular run passed; consult the repository's checks and [readiness record](readiness.md).
+CI covers CLI, protocol, and package behavior on macOS, Linux, and Windows, with Node 22 and 24 where configured. A workflow definition does not prove that a particular run passed. See [release gates and historical evidence](readiness.md) for how to verify a specific revision. The hermetic suite does not establish sleep or reboot recovery, extended multi-agent operation, or OAuth login and refresh across clients and networks.
 
 No OpenAI application, proprietary runtime, font, screenshot or credentials are bundled. Upstream LCU remains separately installed and retains its own release/update policy.

@@ -134,13 +134,7 @@ tailscale serve --bg --https=9443 8789
 
 公开命令为 `mcp`、`serve`、`token`、`doctor`、`config paths` 和 `service`。使用 `lcu-auto <命令> --help` 查看参数、补全和错误。旧 `connect`、`stdio`、`http` 保留为迁移别名，新配置统一使用 `mcp` 和 `serve`。
 
-```sh
-bun install --frozen-lockfile
-bun run check
-bun run pack:check
-```
-
-默认测试不需要已安装的 LCU、图形桌面、云账号或私人凭据；真实桌面测试是独立的显式入口。[贡献指南](CONTRIBUTING.md)说明检查方法与双语同步责任，[发布文档](docs/releases.md)说明不可变 tag 和 npm trusted publishing。
+如果要修改 LCU Auto 本身，请看[贡献指南](CONTRIBUTING.md)，了解开发检查和各项检查能证明什么。
 
 [CLI 参考](docs/cli.md) · [故障排查](docs/troubleshooting.md) · [架构](docs/design.md) · [更新记录](CHANGELOG.md) · [私下报告漏洞](SECURITY.md)
 

@@ -44,6 +44,6 @@ An anonymous request to `/mcp` should fail with an OAuth challenge, not return t
 
 After login, check `initialize`, `tools/list`, and a harmless native-app task. Split observation and input into separate calls, verify state retention and inspect the actual result. A successful health check does not prove desktop access, and a service-token test does not prove a user's OAuth login/refresh flow.
 
-For ChatGPT, this project's broker retains state by authenticated owner and opaque conversation ID even when the platform starts a fresh HTTP client per call. Other clients can use conventional stateful MCP sessions.
+A client that reconnects for each call reuses execution state only when it supplies the same recognized conversation identifier under the same verified identity. Reconnection alone does not preserve JavaScript bindings. See [transport and execution state](design.md#transport-is-not-execution-state) for the distinction from conventional stateful MCP sessions.
 
 Never weaken Access or JWT checks to compensate for a transient network error. Use the [troubleshooting guide](troubleshooting.md), inspect HTTP status and distinguish authentication failure from a signing-key dependency outage.

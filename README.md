@@ -134,13 +134,7 @@ The default `--scope always` can persist app grants in upstream LCU. `--scope se
 
 `mcp`, `serve`, `token`, `doctor`, `config paths` and `service` are the public command groups. Run `lcu-auto <command> --help` for flags, shell completions and errors. The old `connect`, `stdio` and `http` spellings remain migration aliases; new integrations should use `mcp` and `serve`.
 
-```sh
-bun install --frozen-lockfile
-bun run check
-bun run pack:check
-```
-
-The default tests need no installed LCU, GUI, cloud account or private credential. Live tests are explicit and separate. [Contributing](CONTRIBUTING.md) describes the checks and bilingual documentation policy; [release operations](docs/releases.md) describes immutable tags and npm trusted publishing.
+To work on LCU Auto itself, see the [contribution guide](CONTRIBUTING.md) for development checks and their limits.
 
 [CLI reference](docs/cli.md) · [Troubleshooting](docs/troubleshooting.md) · [Architecture](docs/design.md) · [Changelog](CHANGELOG.md) · [Report a vulnerability](SECURITY.md)
 
