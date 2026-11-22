@@ -1,6 +1,6 @@
 # LCU Auto
 
-Read the README and relevant docs before changing public behavior. Keep source portable and the public package independent of a maintainer's machine.
+Read the [README](README.md) before changing public behavior. Use the [documentation index](docs/README.md) to find the relevant contract and [Contributing](CONTRIBUTING.md) to choose checks. Keep source portable and the public package independent of a maintainer's machine.
 
 - Stable Effect v4 owns CLI parsing, filesystem/process boundaries and resource lifetime. Keep the official MCP SDK as protocol owner; jose owns JWT verification.
 - Expose only `js` and `js_reset`. Preserve upstream instructions, schemas, images and errors; keep truthful tool annotations.
